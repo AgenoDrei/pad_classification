@@ -39,18 +39,18 @@ def run(base_path, model_path, gpu_name, batch_size, num_epochs, num_workers):
         'image_size': 450,
         'crop_size': 399,
         'freeze': 0.5,
-        'balance': 2.0,
+        'balance': 2.5,
         'preprocessing': False
     }
     aug_pipeline_train = alb.Compose([
         alb.Resize(hyperparameter['image_size'], hyperparameter['image_size'], always_apply=True, p=1.0),
         alb.RandomCrop(hyperparameter['crop_size'], hyperparameter['crop_size'], always_apply=True, p=1.0),
         alb.HorizontalFlip(p=0.5),
-        alb.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.2, rotate_limit=45, border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5),
+        alb.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.2, rotate_limit=45, p=0.3), #border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5),
         alb.OneOf([alb.GaussNoise(p=0.5), alb.ISONoise(p=0.5), alb.IAAAdditiveGaussianNoise(p=0.25), alb.MultiplicativeNoise(p=0.25)], p=0.3),
-        alb.OneOf([alb.ElasticTransform(border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5), alb.GridDistortion(p=0.5)], p=0.25),
+        alb.OneOf([alb.ElasticTransform(border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5), alb.GridDistortion(p=0.5)], p=0.3),
         alb.OneOf([alb.HueSaturationValue(p=0.5), alb.ToGray(p=0.5), alb.RGBShift(p=0.5)], p=0.5),
-        alb.OneOf([RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2), alb.RandomGamma()], p=0.5),
+        alb.OneOf([RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2), alb.RandomGamma()], p=0.3),
         alb.Normalize(always_apply=True, p=1.0),
         ToTensorV2(always_apply=True, p=1.0)
     ], p=1.0)
@@ -100,7 +100,7 @@ def prepare_model(model_path, hp, device):
 
 
 def prepare_dataset(base_name: str, hp, aug_pipeline_train, aug_pipeline_val, num_workers):
-    set_names = ('train', 'val') 
+    set_names = ('train', 'val') if not hp['preprocessing'] else ('train_pp', 'val_pp')
     train_dataset = RetinaDataset(join(base_name, 'labels_train.csv'), join(base_name, set_names[0]),
                                   augmentations=aug_pipeline_train, balance_ratio=hp['balance'], file_type='.jpg', use_prefix=True)
     val_dataset = RetinaDataset(join(base_name, 'labels_val.csv'), join(base_name, set_names[1]),
