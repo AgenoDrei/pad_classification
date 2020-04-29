@@ -38,8 +38,8 @@ def run(base_path, model_path, gpu_name, batch_size, num_epochs, num_workers):
         'network': 'Inception',
         'image_size': 450,
         'crop_size': 399,
-        'freeze': 1.0,
-        'balance': 3.0,
+        'freeze': 0.5,
+        'balance': 2.0,
         'preprocessing': False
     }
     aug_pipeline_train = alb.Compose([
@@ -102,9 +102,9 @@ def prepare_model(model_path, hp, device):
 def prepare_dataset(base_name: str, hp, aug_pipeline_train, aug_pipeline_val, num_workers):
     set_names = ('train', 'val') 
     train_dataset = RetinaDataset(join(base_name, 'labels_train.csv'), join(base_name, set_names[0]),
-                                  augmentations=aug_pipeline_train, balance_ratio=hp['balance'], file_type='.jpg')
+                                  augmentations=aug_pipeline_train, balance_ratio=hp['balance'], file_type='.jpg', use_prefix=True)
     val_dataset = RetinaDataset(join(base_name, 'labels_val.csv'), join(base_name, set_names[1]),
-                                augmentations=aug_pipeline_val, file_type='.jpg')
+                                augmentations=aug_pipeline_val, file_type='.jpg', use_prefix=True)
 
     sample_weights = [train_dataset.get_weight(i) for i in range(len(train_dataset))]
     sampler = torch.utils.data.sampler.WeightedRandomSampler(sample_weights, len(train_dataset), replacement=True)
@@ -157,7 +157,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
     print(f'{time.strftime("%H:%M:%S")}> Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s with best f1 score of {best_f1_val}')
 
     validate(model, criterion, loaders[1], device, writer, num_epochs, calc_roc=True)
-    torch.save(model.state_dict(), f'model{description}')
+    torch.save(model.state_dict(), f'best_model_pad_transfer.pth')
     return model
 
 
@@ -202,7 +202,8 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', help='GPU name', type=str, default='cuda:0')
     parser.add_argument('--bs', help='Batch size for training', type=int, default=8)
     parser.add_argument('--epochs', help='Number of training epochs', type=int, default=50)
+    parser.add_argument('--model', help='Path to pretrained model', type=str)
     args = parser.parse_args()
 
-    run(args.data, args.gpu, args.bs, args.epochs, 28)
+    run(args.data, args.model, args.gpu, args.bs, args.epochs, 28)
     sys.exit(0)
