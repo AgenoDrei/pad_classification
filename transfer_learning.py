@@ -73,8 +73,8 @@ def run(base_path, model_path, gpu_name, batch_size, num_epochs, num_workers):
 
     desc = f'_transfer_pad_{str("_".join([k[0] + str(hp) for k, hp in hyperparameter.items()]))}'
     writer = SummaryWriter(comment=desc)
-    train_model(net, criterion, optimizer_ft, plateau_scheduler, loaders, device, writer, num_epochs=hyperparameter['num_epochs'], description=desc)
-
+    best_model, best_f1 = train_model(net, criterion, optimizer_ft, plateau_scheduler, loaders, device, writer, num_epochs=hyperparameter['num_epochs'], description=desc)
+    return best_f1
 
 def prepare_model(model_path, hp, device):
     net = None
@@ -124,8 +124,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
         print('-' * 10)
 
         running_loss = 0.0
-        cm = torch.zeros(2, 2)
-
+        metrics = nn_utils.Scores()
         # Iterate over data.
         for i, batch in tqdm(enumerate(loaders[0]), total=len(loaders[0]), desc=f'Epoch {epoch}'):
             inputs = batch['image'].to(device, dtype=torch.float)
@@ -141,10 +140,9 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
             optimizer.step()
 
             running_loss += loss.item() * inputs.size(0)
-            for true, pred in zip(labels, pred):
-                cm[int(true), int(pred)] += 1
+            metrics.add(pred, labels)
 
-        train_scores = nn_utils.calc_scores_from_confusion_matrix(cm)
+        train_scores = metrics.calc_scores(as_dict=True)
         train_scores['loss'] = running_loss / len(loaders[0].dataset)
         nn_utils.write_scores(writer, 'train', train_scores, epoch)
         val_loss, val_f1 = validate(model, criterion, loaders[1], device, writer, epoch)
@@ -158,7 +156,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
 
     validate(model, criterion, loaders[1], device, writer, num_epochs, calc_roc=True)
     torch.save(model.state_dict(), f'best_model_pad_transfer.pth')
-    return model
+    return model, best_f1_val
 
 
 def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False) -> Tuple[float, float]:

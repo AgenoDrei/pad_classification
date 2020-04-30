@@ -128,7 +128,7 @@ def write_scores(writer, tag: str, scores: dict, cur_epoch: int, full_report: bo
         writer.add_scalar(f'{tag}/kappa', scores['kappa'], cur_epoch)
         writer.add_scalar(f'{tag}/accuracy', scores['accuracy'], cur_epoch)
     print(
-        f'{tag[0].upper()}{tag[1:]} scores:\n F1: {scores["f1"]},\n Precision: {scores["precision"]},\n Recall: {scores["recall"]}')
+            f'{tag[0].upper()}{tag[1:]} scores:\n Accuracy: {scores["accuracy"]},\n F1: {scores["f1"]},\n Precision: {scores["precision"]},\n Recall: {scores["recall"]}')
 
 
 class MajorityDict:
