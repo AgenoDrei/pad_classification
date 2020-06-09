@@ -46,6 +46,7 @@ def run(base_path, model_path, gpu_name, batch_size, num_epochs, num_workers):
         alb.Resize(hyperparameter['image_size'], hyperparameter['image_size'], always_apply=True, p=1.0),
         alb.RandomCrop(hyperparameter['crop_size'], hyperparameter['crop_size'], always_apply=True, p=1.0),
         alb.HorizontalFlip(p=0.5),
+        alb.VerticalFlip(p=0.5),
         alb.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.2, rotate_limit=45, p=0.3), #border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5),
         alb.OneOf([alb.GaussNoise(p=0.5), alb.ISONoise(p=0.5), alb.IAAAdditiveGaussianNoise(p=0.25), alb.MultiplicativeNoise(p=0.25)], p=0.3),
         alb.OneOf([alb.ElasticTransform(border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5), alb.GridDistortion(p=0.5)], p=0.3),
