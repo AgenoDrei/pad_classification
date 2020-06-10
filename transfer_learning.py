@@ -36,7 +36,7 @@ def run(base_path, model_path, gpu_name, batch_size, num_epochs, num_workers):
         'batch_size': batch_size,
         'optimizer': optim.Adam.__name__,
         'network': 'Inception',
-        'image_size': 450,
+        'image_size': 425,
         'crop_size': 399,
         'freeze': 0.5,
         'balance': 2.5,
@@ -86,7 +86,7 @@ def prepare_model(model_path, hp, device):
     elif hp['network'] == 'Inception':
         net = inceptionv4()
         num_ftrs = net.last_linear.in_features
-        net.last_linear = Linear(num_ftrs, 2)
+        net.last_linear = Linear(num_ftrs, 5)
         for i, child in enumerate(net.features.children()):
             if i < len(net.features) * hp['freeze']:
                 for param in child.parameters():
@@ -103,9 +103,9 @@ def prepare_model(model_path, hp, device):
 def prepare_dataset(base_name: str, hp, aug_pipeline_train, aug_pipeline_val, num_workers):
     set_names = ('train', 'val') if not hp['preprocessing'] else ('train_pp', 'val_pp')
     train_dataset = RetinaDataset(join(base_name, 'labels_train.csv'), join(base_name, set_names[0]),
-                                  augmentations=aug_pipeline_train, balance_ratio=hp['balance'], file_type='.jpg', use_prefix=True)
+                                  augmentations=aug_pipeline_train, balance_ratio=hp['balance'], file_type='.jpg', use_prefix=True, class_iloc=3)
     val_dataset = RetinaDataset(join(base_name, 'labels_val.csv'), join(base_name, set_names[1]),
-                                augmentations=aug_pipeline_val, file_type='.jpg', use_prefix=True)
+                                augmentations=aug_pipeline_val, file_type='.jpg', use_prefix=True, class_iloc=3)
 
     sample_weights = [train_dataset.get_weight(i) for i in range(len(train_dataset))]
     sampler = torch.utils.data.sampler.WeightedRandomSampler(sample_weights, len(train_dataset), replacement=True)
@@ -129,7 +129,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
         # Iterate over data.
         for i, batch in tqdm(enumerate(loaders[0]), total=len(loaders[0]), desc=f'Epoch {epoch}'):
             inputs = batch['image'].to(device, dtype=torch.float)
-            labels = batch['label'].to(device)
+            labels = batch['max_fs'].to(device)
             
             model.train()
             optimizer.zero_grad()
