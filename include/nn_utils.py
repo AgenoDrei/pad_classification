@@ -233,7 +233,7 @@ class Scores:
         # pd.concat([self.data].extend(pd.DataFrame()), ignore_index=True)
 
     def calc_scores(self, as_dict: bool = False):
-        print(self.data['label'].tolist(), self.data['prediction'].tolist())
+        #print(self.data['label'].tolist(), self.data['prediction'].tolist())
         score = Score(f1_score(self.data['label'].tolist(), self.data['prediction'].tolist()),
                       precision_score(self.data['label'].tolist(), self.data['prediction'].tolist()),
                       recall_score(self.data['label'].tolist(), self.data['prediction'].tolist()),
@@ -248,7 +248,6 @@ class Scores:
         self.data.label = self.data.label.apply(lambda p: p[0] if type(p) == list else p)
         eye_groups = self.data.groupby('eye_id')  # create group for different eyes
         
-
         for name, group in eye_groups:
             num_voting_values = int(np.ceil(top_percent * len(group)))  # percentage of values considered
             if top_percent != 1.0:

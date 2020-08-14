@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from skvideo import io
-import time_wrap as tw
+import include.time_wrap as tw
 from mpl_toolkits.axes_grid1 import ImageGrid
 
 ####################################

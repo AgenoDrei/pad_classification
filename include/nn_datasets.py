@@ -3,14 +3,14 @@ from collections import Counter
 from os.path import join
 import random
 import cv2
-import nn_utils
+import include.nn_utils
 import numpy as np
 import pandas as pd
 import torch
-import utils as utl
+import include.utils as utl
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
-from nn_utils import get_video_desc
+from include.nn_utils import get_video_desc
 from torch.utils.data import Dataset
 
 
@@ -35,7 +35,7 @@ class RetinaDataset(Dataset):
         self.ratio = balance_ratio
         self.use_prefix = use_prefix
         self.class_iloc = class_iloc
-        self.class_freq = Counter(self.labels_df.iloc[:, class_iloc]
+        self.class_freq = Counter(self.labels_df.iloc[:, class_iloc])
 
     def __len__(self):
         return len(self.labels_df)
@@ -52,6 +52,7 @@ class RetinaDataset(Dataset):
             idx = idx.tolist()
 
         severity = self.labels_df.iloc[idx, self.class_iloc]
+        severity = 1 if severity > 0 else 0
 
         if self.use_prefix:
             prefix = 'pos' if severity > 0 else 'neg'

@@ -7,13 +7,13 @@ from typing import Tuple
 import albumentations as alb
 import cv2
 import torch
-from nn_datasets import RetinaDataset
+from include.nn_datasets import RetinaDataset
 from torch.nn import CrossEntropyLoss, Linear
 import torch.optim as optim
 from albumentations.augmentations.transforms import RandomBrightnessContrast
 from albumentations.pytorch import ToTensorV2
-import nn_utils
-from nn_processing import RandomFiveCrop
+from include.nn_utils import dfs_freeze, Scores, write_scores
+from include.nn_processing import RandomFiveCrop
 from torch.optim import lr_scheduler
 from torch.utils.data import Dataset
 from torch.utils.tensorboard import SummaryWriter
@@ -31,14 +31,14 @@ def run(base_path, model_path, gpu_name, batch_size, num_epochs, num_workers):
     hyperparameter = {
         'data': os.path.basename(base_path),
         'learning_rate': 1e-4,
-        'weight_decay': 1e-4,
+        'weight_decay': 1e-3,
         'num_epochs': num_epochs,
         'batch_size': batch_size,
         'optimizer': optim.Adam.__name__,
         'network': 'Inception',
         'image_size': 425,
         'crop_size': 399,
-        'freeze': 0.5,
+        'freeze': 0.2,
         'balance': 2.5,
         'preprocessing': False
     }
@@ -47,7 +47,7 @@ def run(base_path, model_path, gpu_name, batch_size, num_epochs, num_workers):
         alb.RandomCrop(hyperparameter['crop_size'], hyperparameter['crop_size'], always_apply=True, p=1.0),
         alb.HorizontalFlip(p=0.5),
         alb.VerticalFlip(p=0.5),
-        alb.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.2, rotate_limit=45, p=0.3), #border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5),
+        alb.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.2, rotate_limit=10, p=0.3), #border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5),
         alb.OneOf([alb.GaussNoise(p=0.5), alb.ISONoise(p=0.5), alb.IAAAdditiveGaussianNoise(p=0.25), alb.MultiplicativeNoise(p=0.25)], p=0.3),
         alb.OneOf([alb.ElasticTransform(border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5), alb.GridDistortion(p=0.5)], p=0.3),
         alb.OneOf([alb.HueSaturationValue(p=0.5), alb.ToGray(p=0.5), alb.RGBShift(p=0.5)], p=0.5),
@@ -86,14 +86,15 @@ def prepare_model(model_path, hp, device):
     elif hp['network'] == 'Inception':
         net = inceptionv4()
         num_ftrs = net.last_linear.in_features
-        net.last_linear = Linear(num_ftrs, 5)
+        net.last_linear = Linear(num_ftrs, 2)
         for i, child in enumerate(net.features.children()):
             if i < len(net.features) * hp['freeze']:
                 for param in child.parameters():
                     param.requires_grad = False
-                nn_utils.dfs_freeze(child)
+                dfs_freeze(child)
                 
     net.load_state_dict(torch.load(model_path, map_location=device))
+    #net.last_linear = Linear(net.last_linear.in_features, 5)
     net.train()
     
     print(f'Model info: {net.__class__.__name__}, layer: {len(net.features)}, #frozen layer: {len(net.features) * hp["freeze"]}')
@@ -103,9 +104,9 @@ def prepare_model(model_path, hp, device):
 def prepare_dataset(base_name: str, hp, aug_pipeline_train, aug_pipeline_val, num_workers):
     set_names = ('train', 'val') if not hp['preprocessing'] else ('train_pp', 'val_pp')
     train_dataset = RetinaDataset(join(base_name, 'labels_train.csv'), join(base_name, set_names[0]),
-                                  augmentations=aug_pipeline_train, balance_ratio=hp['balance'], file_type='.jpg', use_prefix=True, class_iloc=3)
+                                  augmentations=aug_pipeline_train, balance_ratio=hp['balance'], file_type='.jpg', use_prefix=False, class_iloc=1)
     val_dataset = RetinaDataset(join(base_name, 'labels_val.csv'), join(base_name, set_names[1]),
-                                augmentations=aug_pipeline_val, file_type='.jpg', use_prefix=True, class_iloc=3)
+                                augmentations=aug_pipeline_val, file_type='.jpg', use_prefix=False, class_iloc=1)
 
     sample_weights = [train_dataset.get_weight(i) for i in range(len(train_dataset))]
     sampler = torch.utils.data.sampler.WeightedRandomSampler(sample_weights, len(train_dataset), replacement=True)
@@ -125,11 +126,11 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
         print('-' * 10)
 
         running_loss = 0.0
-        metrics = nn_utils.Scores()
+        metrics = Scores()
         # Iterate over data.
         for i, batch in tqdm(enumerate(loaders[0]), total=len(loaders[0]), desc=f'Epoch {epoch}'):
             inputs = batch['image'].to(device, dtype=torch.float)
-            labels = batch['max_fs'].to(device)
+            labels = batch['label'].to(device)
             
             model.train()
             optimizer.zero_grad()
@@ -145,7 +146,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
 
         train_scores = metrics.calc_scores(as_dict=True)
         train_scores['loss'] = running_loss / len(loaders[0].dataset)
-        nn_utils.write_scores(writer, 'train', train_scores, epoch)
+        write_scores(writer, 'train', train_scores, epoch)
         val_loss, val_f1 = validate(model, criterion, loaders[1], device, writer, epoch)
 
         best_f1_val = val_f1 if val_f1 > best_f1_val else best_f1_val
@@ -155,21 +156,20 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
     time_elapsed = time.time() - since
     print(f'{time.strftime("%H:%M:%S")}> Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s with best f1 score of {best_f1_val}')
 
-    validate(model, criterion, loaders[1], device, writer, num_epochs, calc_roc=True)
+    #validate(model, criterion, loaders[1], device, writer, num_epochs, calc_roc=True)
     torch.save(model.state_dict(), f'best_model_pad_transfer.pth')
-    return model, best_f1_val
+    return model, val_f1
 
 
 def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False) -> Tuple[float, float]:
     model.eval()
     running_loss = 0.0
-    perf_metrics = nn_utils.Scores()
+    perf_metrics = Scores()
 
     for i, batch in tqdm(enumerate(loader), total=len(loader), desc='Validation'):
         inputs = batch['image'].to(device, dtype=torch.float)
         labels = batch['label'].to(device)
         # crop_idx = batch['image_idx']
-        crop_idx = batch['eye_id']
 
         with torch.no_grad():
             outputs = model(inputs)
@@ -177,11 +177,11 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
             _, preds = torch.max(outputs, 1)
             running_loss += loss.item() * inputs.size(0)
 
-        perf_metrics.add(preds, labels, tags=crop_idx)
+        perf_metrics.add(preds, labels)
 
     scores = perf_metrics.calc_scores(as_dict=True)
     scores['loss'] = running_loss / len(loader.dataset)
-    nn_utils.write_scores(writer, 'val', scores, cur_epoch, full_report=True)
+    write_scores(writer, 'val', scores, cur_epoch, full_report=True)
 
     # print(majority_dict)
     # print(labels, preds)
