@@ -1,0 +1,3 @@
+[submodule "pytorch-cnn-visualizations"]
+	path = pytorch-cnn-visualizations
+	url = https://github.com/utkuozbulak/pytorch-cnn-visualizations
