@@ -157,7 +157,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
     print(f'{time.strftime("%H:%M:%S")}> Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s with best f1 score of {best_f1_val}')
 
     #validate(model, criterion, loaders[1], device, writer, num_epochs, calc_roc=True)
-    torch.save(model.state_dict(), f'best_model_pad_transfer.pth')
+    torch.save(model.state_dict(), f'model_pad_transfer.pth')
     return model, val_f1
 
 
