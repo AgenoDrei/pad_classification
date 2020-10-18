@@ -38,7 +38,7 @@ def run(base_path, model_path, gpu_name, batch_size, num_epochs, num_workers):
         'network': 'Inception',
         'image_size': 425,
         'crop_size': 399,
-        'freeze': 0.2,
+        'freeze': 0.0,
         'balance': 2.5,
         'preprocessing': False
     }
@@ -46,11 +46,11 @@ def run(base_path, model_path, gpu_name, batch_size, num_epochs, num_workers):
         alb.Resize(hyperparameter['image_size'], hyperparameter['image_size'], always_apply=True, p=1.0),
         alb.RandomCrop(hyperparameter['crop_size'], hyperparameter['crop_size'], always_apply=True, p=1.0),
         alb.HorizontalFlip(p=0.5),
-        alb.VerticalFlip(p=0.5),
-        alb.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.2, rotate_limit=10, p=0.3), #border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5),
+        #alb.VerticalFlip(p=0.5),
+        alb.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=5, p=0.5), #border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5),
         alb.OneOf([alb.GaussNoise(p=0.5), alb.ISONoise(p=0.5), alb.IAAAdditiveGaussianNoise(p=0.25), alb.MultiplicativeNoise(p=0.25)], p=0.3),
         alb.OneOf([alb.ElasticTransform(border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5), alb.GridDistortion(p=0.5)], p=0.3),
-        alb.OneOf([alb.HueSaturationValue(p=0.5), alb.ToGray(p=0.5), alb.RGBShift(p=0.5)], p=0.5),
+        alb.OneOf([alb.HueSaturationValue(p=0.5), alb.ToGray(p=0.5), alb.RGBShift(p=0.5)], p=0.3),
         alb.OneOf([RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2), alb.RandomGamma()], p=0.3),
         alb.Normalize(always_apply=True, p=1.0),
         ToTensorV2(always_apply=True, p=1.0)
@@ -165,6 +165,8 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
     model.eval()
     running_loss = 0.0
     perf_metrics = Scores()
+    sm = torch.nn.Softmax(dim=1)
+
 
     for i, batch in tqdm(enumerate(loader), total=len(loader), desc='Validation'):
         inputs = batch['image'].to(device, dtype=torch.float)
@@ -175,19 +177,14 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             _, preds = torch.max(outputs, 1)
+            probs = sm(outputs)
             running_loss += loss.item() * inputs.size(0)
 
-        perf_metrics.add(preds, labels)
+        perf_metrics.add(preds, labels, probs=probs)
 
     scores = perf_metrics.calc_scores(as_dict=True)
     scores['loss'] = running_loss / len(loader.dataset)
     write_scores(writer, 'val', scores, cur_epoch, full_report=True)
-
-    # print(majority_dict)
-    # print(labels, preds)
-    #f1_video, recall_video, precision_video = f1_score(labels, preds), recall_score(labels, preds), precision_score(labels, preds)
-    #print(f'Validation scores (all 5 crops):\n F1: {f1_video},\n Precision: {precision_video},\n Recall: {recall_video}')
-    #writer.add_scalar('val/crof1', f1_video, cur_epoch)
 
     return running_loss / len(loader.dataset), scores['f1']
 

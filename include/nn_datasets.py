@@ -62,7 +62,7 @@ class RetinaDataset(Dataset):
         img = cv2.imread(img_name)
         assert img is not None, f'Image {img_name} has to exist'
 
-        sample = {'image': img, 'label': severity, 'max_fs': self.labels_df.iloc[idx, self.class_iloc]}
+        sample = {'orig_img': img, 'image': img, 'label': severity, 'max_fs': self.labels_df.iloc[idx, self.class_iloc]}
         if self.augs:
             sample['image'] = self.augs(image=img)['image']
         return sample
