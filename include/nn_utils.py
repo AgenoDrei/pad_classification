@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, cohen_kappa_score, \
-    precision_recall_curve
+    precision_recall_curve, confusion_matrix, roc_auc_score
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import utils
 
@@ -124,97 +124,16 @@ def write_scores(writer, tag: str, scores: dict, cur_epoch: int, full_report: bo
     writer.add_scalar(f'{tag}/precision', scores['precision'], cur_epoch)
     writer.add_scalar(f'{tag}/recall', scores['recall'], cur_epoch)
     if scores.get('loss'): writer.add_scalar(f'{tag}/loss', scores['loss'], cur_epoch)
+    if scores.get('roc'): writer.add_scalar(f'{tag}/roc', scores['roc'], cur_epoch)
+    print(f'{tag[0].upper()}{tag[1:]} scores:\n F1: {scores["f1"]},\n Precision: {scores["precision"]},\n Recall: {scores["recall"]}')
     if full_report:
+        print(f' Accuracy: {scores["accuracy"]},')
+        print(f' ROC AUC: {scores["roc"]}')
         writer.add_scalar(f'{tag}/kappa', scores['kappa'], cur_epoch)
         writer.add_scalar(f'{tag}/accuracy', scores['accuracy'], cur_epoch)
-    print(
-            f'{tag[0].upper()}{tag[1:]} scores:\n Accuracy: {scores["accuracy"]},\n F1: {scores["f1"]},\n Precision: {scores["precision"]},\n Recall: {scores["recall"]}')
 
 
-class MajorityDict:
-    def __init__(self):
-        self.dict = {}
-
-    def add(self, predictions, ground_truth, key_list, probabilities=None):
-        """
-        Add network predictions to Majority Dict, has to be called for every batch of the validation set
-        :param probabilities:
-        :param predictions: list of predictions
-        :param ground_truth: list of correct, known labels
-        :param key_list: list of keys (like video id)
-        :return: None
-        """
-        for i, (true, pred) in enumerate(zip(ground_truth, predictions)):
-            if self.dict.get(key_list[i]):
-                entry = self.dict[key_list[i]]
-                entry[str(pred)] += 1
-                entry['count'] += 1
-            else:
-                self.dict[key_list[i]] = {'0': 0 if int(pred) else 1, '1': 1 if int(pred) else 0, 'count': 1,
-                                          'label': int(true)}
-
-        if probabilities:
-            for gt, pred, prob, name in zip(ground_truth, predictions, probabilities, key_list):
-                if self.dict.get(name):
-                    entry = self.dict.get(name)
-                    entry['results'][round(prob, 8)] = pred
-                    entry['count'] += 1
-                else:
-                    self.dict[name] = {'label': int(gt), 'count': 1, 'results': {}}
-                    self.dict[name]['results'][round(prob, 8)] = pred
-
-    def get_probabilities_and_labels(self):
-        labels, probs, names = [], [], []
-        for i, item in self.dict.items():
-            probs.append(item['1'] / (item['1'] + item['0']))
-            labels.append(item['label'])
-            names.append(i)
-        return {'probabilities': probs, 'labels': labels, 'names': names}
-
-    def get_predictions_and_labels(self, ratio: float = 0.5):
-        """
-        Do majority voting to get final predicions aggregated over all elements sharing the same key
-        :param ratio: Used to shange majority percentage (default 50/50)
-        :return: dict(predictions, labels, names)
-        """
-        labels, preds, names = [], [], []
-        for i, item in self.dict.items():
-            if item['1'] > ratio * (item['0'] + item['1']):
-                preds.append(1)
-            else:
-                preds.append(0)
-            labels.append(item['label'])
-            names.append(i)
-        return {'predictions': preds, 'labels': labels, 'names': names}
-
-    def get_eye_predictions_from_best_scores(self, num_best_scores: int = 10, ratio: float = 0.5):
-        labels, preds, names = [], [], []
-        for i, item in self.dict.items():
-            labels.append(item['label'])
-            names.append(i)
-            sorted_res = sorted(item['results'].items(), reverse=True)[:num_best_scores]
-            sums = (0, 0)
-            for prob, pred in sorted_res:
-                sums[int(pred)] += prob
-            if sums[1] > ratio * (sums[0] * sums[1]):
-                preds.append(1)
-            else:
-                preds.append(0)
-        return {'predictions': preds, 'labels': labels, 'names': names}
-
-    def get_roc_data(self, step_size: float = 0.05):
-        """
-        Generate predictions for different thresholds
-        :param step_size: step_size between different thresholds
-        :return: dict(step: dict)
-        """
-        roc_data = {}
-        for i in np.arange(0, 1.001, step_size):
-            roc_data[i] = self.get_predictions_and_labels(ratio=i)
-        return roc_data
-
-
-Score = namedtuple('Score', ['f1', 'precision', 'recall', 'accuracy', 'kappa', 'loss'])
+Score = namedtuple('Score', ['f1', 'precision', 'recall', 'accuracy', 'kappa', 'loss', 'roc'])
 
 
 class Scores:
@@ -226,8 +145,7 @@ class Scores:
         new_data = tags if tags is not None else ['train' for i in range(len(labels.tolist()))], \
                    labels.tolist(), \
                    preds.tolist(), \
-                   probs.tolist() if probs is not None else [0 for i in range(len(labels.tolist()))]
-
+                   probs[:, 1].tolist() if probs is not None else [0 for i in range(len(labels.tolist()))]
         new_data_dict = {col: new_data[i] for i, col in enumerate(self.columns)}
         self.data = self.data.append(pd.DataFrame(new_data_dict), ignore_index=True)
         # pd.concat([self.data].extend(pd.DataFrame()), ignore_index=True)
@@ -238,7 +156,11 @@ class Scores:
                       precision_score(self.data['label'].tolist(), self.data['prediction'].tolist()),
                       recall_score(self.data['label'].tolist(), self.data['prediction'].tolist()),
                       accuracy_score(self.data['label'].tolist(), self.data['prediction'].tolist()),
-                      cohen_kappa_score(self.data['label'].tolist(), self.data['prediction'].tolist()), 0)
+                      cohen_kappa_score(self.data['label'].tolist(), self.data['prediction'].tolist()), 0, 
+                      roc_auc_score(self.data['label'].tolist(), self.data['probability'].tolist())
+                    )
+        if self.data['probability'].sum() != 0:
+            print('Confusion matrix: \n ', confusion_matrix(self.data['label'].tolist(), self.data['prediction'].tolist()))
         return score._asdict() if as_dict else score
 
     def calc_scores_eye(self, as_dict: bool = False, ratio: float = 0.5, top_percent=1.0):

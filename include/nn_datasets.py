@@ -35,7 +35,8 @@ class RetinaDataset(Dataset):
         self.ratio = balance_ratio
         self.use_prefix = use_prefix
         self.class_iloc = class_iloc
-        self.class_freq = Counter(self.labels_df.iloc[:, class_iloc])
+        self.class_freq = {0: sum([1 for v in self.labels_df.iloc[:, class_iloc] if v == 0]), 1: sum([1 for v in self.labels_df.iloc[:, class_iloc] if v >= 1])}
+        print(self.class_freq)
 
     def __len__(self):
         return len(self.labels_df)
@@ -43,7 +44,7 @@ class RetinaDataset(Dataset):
     def get_weight(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        severity = self.labels_df.iloc[idx, self.class_iloc]
+        severity = 1 if self.labels_df.iloc[idx, self.class_iloc] > 0 else 0
         weight = 1.0 / self.class_freq[severity]
         return weight
 
@@ -62,10 +63,14 @@ class RetinaDataset(Dataset):
         img = cv2.imread(img_name)
         assert img is not None, f'Image {img_name} has to exist'
 
-        sample = {'orig_img': img, 'image': img, 'label': severity, 'max_fs': self.labels_df.iloc[idx, self.class_iloc]}
+        sample = {'orig_img': img, 'image': img, 'label': severity, 'max_fs': self.labels_df.iloc[idx, self.class_iloc], 'name': os.path.basename(img_name)}
         if self.augs:
             sample['image'] = self.augs(image=img)['image']
         return sample
+
+
+class SegmentsDataset(Dataset):
+
 
 
 ########################## Dataset Helper Methods #########################
@@ -79,19 +84,18 @@ def get_validation_pipeline(image_size, crop_size):
 
 
 def get_training_pipeline(image_size, crop_size, strength=0):
-    if strength == 0:
-        return A.Compose([
-            A.Resize(image_size, image_size, always_apply=True, p=1.0),
-            A.RandomCrop(crop_size, crop_size, always_apply=True, p=1.0),
-            A.HorizontalFlip(p=0.5),
-            A.CoarseDropout(min_holes=1, max_holes=3, max_width=75, max_height=75, min_width=25, min_height=25, p=0.3),
-            A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.3, rotate_limit=45, border_mode=cv2.BORDER_CONSTANT,
-                               value=0,
-                               p=0.5),
-            A.OneOf([A.HueSaturationValue(p=0.5), A.ToGray(p=0.5), A.RGBShift(p=0.5)], p=0.3),
-            A.OneOf([A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.2), A.RandomGamma()], p=0.5),
-            A.Normalize(always_apply=True, p=1.0),
-            ToTensorV2(always_apply=True, p=1.0)
-        ], p=1.0)
-    else:
-        return None
+    pipe = A.Compose([
+        A.Resize(image_size, image_size, always_apply=True, p=1.0),
+        A.RandomCrop(crop_size, crop_size, always_apply=True, p=1.0),
+        A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.5),
+        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=5, p=0.3),
+        # border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5),
+        A.OneOf([A.GaussNoise(p=0.5), A.ISONoise(p=0.5), A.IAAAdditiveGaussianNoise(p=0.25), A.MultiplicativeNoise(p=0.25)], p=0.3),
+        A.OneOf([A.ElasticTransform(border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5), A.GridDistortion(p=0.5)], p=0.3),
+        A.OneOf([A.HueSaturationValue(p=0.5), A.ToGray(p=0.5), A.RGBShift(p=0.5)], p=0.3),
+        A.OneOf([A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2), A.RandomGamma()], p=0.3),
+        A.Normalize(always_apply=True, p=1.0),
+        ToTensorV2(always_apply=True, p=1.0)
+    ], p=1.0)
+    return pipe

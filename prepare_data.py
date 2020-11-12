@@ -28,9 +28,9 @@ def run(input_path, output_path, k, labels_path):
     df_pat = df.groupby(COL_ID)[COL_CLASS, 'Eye'].agg(lambda d: ','.join([str(e) for e in d])).reset_index()
     df_pat[COL_CLASS] = df_pat[COL_CLASS].apply(lambda d: int(d[0]) if len(d) < 2 or d[0] == d[2] else -1) 
     
-    splitter = StratifiedKFold(n_splits=k)
+    splitter = StratifiedKFold(n_splits=k, shuffle=True)
     
-    for i, split in enumerate(splitter.split(df_pat, df_pat[COL_CLASS])):
+    for i, split in enumerate(splitter.split(df_pat.drop([COL_CLASS], axis=1), df_pat[COL_CLASS])):
         print(f'Creating fold{i}...')
         df_train = df_pat.iloc[split[0]]
         df_val = df_pat.iloc[split[1]]

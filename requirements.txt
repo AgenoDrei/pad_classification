@@ -1,0 +1,15 @@
+pandas~=1.1.3
+click~=7.1.2
+joblib~=0.17.0
+opencv-python~=4.4.0.46
+numpy~=1.19.1
+torch~=1.7.0
+pillow~=8.0.1
+matplotlib~=3.3.2
+torchvision~=0.8.1
+scikit-image~=0.17.2
+albumentations~=0.5.1
+setuptools~=50.3.0
+tqdm~=4.51.0
+toml~=0.10.1
+pretrainedmodels~=0.7.4
