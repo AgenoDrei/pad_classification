@@ -1,22 +1,23 @@
+from os.path import join
+
+import argparse
 import os
 import sys
 import time
 import toml
-from os.path import join
-from typing import Tuple
 import torch
-from include.nn_datasets import RetinaDataset, SegmentsDataset, get_validation_pipeline, get_training_pipeline
-from torch.nn import CrossEntropyLoss, Linear
 import torch.optim as optim
-from include.nn_utils import dfs_freeze, Scores, write_scores
+from pretrainedmodels import inceptionv4
+from torch.nn import CrossEntropyLoss, Linear
 from torch.optim import lr_scheduler
 from torch.utils.data import Dataset
 from torch.utils.tensorboard import SummaryWriter
-from pretrainedmodels import inceptionv4
-import argparse
 from torchvision import models
 from tqdm import tqdm
+from typing import Tuple
 
+from include.nn_datasets import RetinaDataset, SegmentsDataset, get_validation_pipeline, get_training_pipeline
+from include.nn_utils import dfs_freeze, Scores, write_scores
 
 RES_PATH = ''
 
@@ -35,7 +36,8 @@ def run(base_path, model_path, num_epochs):
     aug_pipeline_train = get_training_pipeline(hp['image_size'], hp['crop_size'])
     aug_pipeline_val = get_validation_pipeline(hp['image_size'], hp['crop_size'])
 
-    loaders = prepare_dataset(base_path, hp, aug_pipeline_train, aug_pipeline_val, config['num_workers'], config['eye_segments'])
+    loaders = prepare_dataset(base_path, hp, aug_pipeline_train, aug_pipeline_val, config['num_workers'],
+                              config['eye_segments'])
     net = prepare_model(model_path, hp, device)
 
     optimizer_ft = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=hp['learning_rate'],
@@ -86,9 +88,11 @@ def prepare_dataset(base_name: str, hp, aug_pipeline_train, aug_pipeline_val, nu
     set_names = ('train', 'val')
     dataset = RetinaDataset if eye_segments == 1 else SegmentsDataset
     train_dataset = dataset(join(base_name, 'labels_train.csv'), join(base_name, set_names[0]),
-                                  augmentations=aug_pipeline_train, file_type='.jpg', use_prefix=False, class_iloc=1)
+                            augmentations=aug_pipeline_train, file_type='.jpg', use_prefix=False, class_iloc=1,
+                            thresh=hp['class_threshold'])
     val_dataset = dataset(join(base_name, 'labels_val.csv'), join(base_name, set_names[1]),
-                                augmentations=aug_pipeline_val, file_type='.jpg', use_prefix=False, class_iloc=1)
+                          augmentations=aug_pipeline_val, file_type='.jpg', use_prefix=False, class_iloc=1,
+                          thresh=hp['class_threshold'])
 
     sample_weights = [train_dataset.get_weight(i) for i in range(len(train_dataset))]
     sampler = torch.utils.data.sampler.WeightedRandomSampler(sample_weights, len(train_dataset), replacement=True)
@@ -96,7 +100,7 @@ def prepare_dataset(base_name: str, hp, aug_pipeline_train, aug_pipeline_val, nu
                                                sampler=sampler, num_workers=num_workers)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=hp['batch_size'], shuffle=False,
                                              num_workers=num_workers)
-    print(f'Dataset info:\n Train size: {len(train_dataset)},\n Validation size: {len(val_dataset)}')
+    print(f'Dataset ({dataset.__name__}) info:\n Train size: {len(train_dataset)},\n Validation size: {len(val_dataset)}')
     return train_loader, val_loader
 
 
@@ -156,7 +160,7 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
     for i, batch in tqdm(enumerate(loader), total=len(loader), desc='Validation'):
         inputs = batch['image'].to(device, dtype=torch.float)
         labels = batch['label'].to(device)
-        names = batch['name']
+        names = batch['eye']
 
         with torch.no_grad():
             outputs = model(inputs)
@@ -168,8 +172,10 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
         perf_metrics.add(preds, labels, probs=probs, tags=names)
 
     scores = perf_metrics.calc_scores(as_dict=True)
+    scores_eye = perf_metrics.calc_scores_eye(as_dict=True, ratio=0.5)
     scores['loss'] = running_loss / len(loader.dataset)
     write_scores(writer, 'val', scores, cur_epoch, full_report=True)
+    write_scores(writer, 'eye_val', scores_eye, cur_epoch, full_report=True)
     perf_metrics.data.to_csv(join(RES_PATH, f'{cur_epoch}_last_pad_model_{scores["f1"]:0.3}.csv'), index=False)
 
     return running_loss / len(loader.dataset), scores

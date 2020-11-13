@@ -35,10 +35,10 @@ def run(input_path, output_path, k, labels_path):
         df_train = df_pat.iloc[split[0]]
         df_val = df_pat.iloc[split[1]]
 
-        for s, name in zip([df_train, df_val], ['train', 'val']):
-            #s.to_csv(join(output_path, f'fold{i}', f'labels_{name}.csv'), index=False)
+        for df_cur, name in zip([df_train, df_val], ['train', 'val']):
+            # s.to_csv(join(output_path, f'fold{i}', f'labels_{name}.csv'), index=False)
             out = pd.DataFrame(columns=[COL_ID, COL_CLASS])
-            for row in s.itertuples():
+            for row in df_cur.itertuples():
                 out = out.append({COL_ID: row[1] + row[3][0], COL_CLASS: row[2]}, ignore_index=True)
                 [copy(join(input_path, f), join(output_path, f'fold{i}', name, f)) for f in files if row[1] + row[3][0] in f]
                 if len(row[3]) > 1: # Two eyes exist for patient

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, cohen_kappa_score, \
-    precision_recall_curve, confusion_matrix, roc_auc_score
+    precision_recall_curve, confusion_matrix, roc_auc_score, average_precision_score
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import utils
 
@@ -93,32 +93,6 @@ def calc_scores_from_confusion_matrix(cm):
     return {'precision': precision, 'recall': recall, 'f1': f1}
 
 
-def write_f1_curve(majority_dict, writer):
-    roc_data = majority_dict.get_roc_data()
-    roc_scores = {}
-    for i, d in enumerate(roc_data.values()):
-        roc_scores[i] = f1_score(d['labels'], d['predictions'])
-    print('F1 Curve: ', end='')
-    for key, val in roc_scores.items():
-        writer.add_scalar('val/f1_roc', val, key)
-        print(f'{key}: {val}', end=', ')
-
-
-def write_pr_curve(majority_dict, writer: SummaryWriter):
-    probs, labels, names = majority_dict.get_probabilities_and_labels().values()
-    precision, recall, thresholds = precision_recall_curve(labels, probs)
-    print('PR Curve (Recall: Precision): ')
-    for p, r in zip(precision, recall):
-        print(f' {r}: {p}')
-
-    # writer.add_pr_curve('eval/pr', labels, probs, 0)
-    # fig = plt.figure()
-    # plt.plot(recall, precision)
-    # plt.xlim([0.0, 1.0])
-    # plt.ylim([0.0, 1.0])
-    # writer.add_figure('eval/pr', fig)
-
-
 def write_scores(writer, tag: str, scores: dict, cur_epoch: int, full_report: bool = False):
     writer.add_scalar(f'{tag}/f1', scores['f1'], cur_epoch)
     writer.add_scalar(f'{tag}/precision', scores['precision'], cur_epoch)
@@ -129,11 +103,12 @@ def write_scores(writer, tag: str, scores: dict, cur_epoch: int, full_report: bo
     if full_report:
         print(f' Accuracy: {scores["accuracy"]},')
         print(f' ROC AUC: {scores["roc"]}')
+        print(f' PR AUC: {scores["pr"]}')
         writer.add_scalar(f'{tag}/kappa', scores['kappa'], cur_epoch)
         writer.add_scalar(f'{tag}/accuracy', scores['accuracy'], cur_epoch)
 
 
-Score = namedtuple('Score', ['f1', 'precision', 'recall', 'accuracy', 'kappa', 'loss', 'roc'])
+Score = namedtuple('Score', ['f1', 'precision', 'recall', 'accuracy', 'kappa', 'loss', 'roc', 'pr'])
 
 
 class Scores:
@@ -152,18 +127,20 @@ class Scores:
 
     def calc_scores(self, as_dict: bool = False):
         #print(self.data['label'].tolist(), self.data['prediction'].tolist())
-        score = Score(f1_score(self.data['label'].tolist(), self.data['prediction'].tolist()),
-                      precision_score(self.data['label'].tolist(), self.data['prediction'].tolist()),
-                      recall_score(self.data['label'].tolist(), self.data['prediction'].tolist()),
-                      accuracy_score(self.data['label'].tolist(), self.data['prediction'].tolist()),
-                      cohen_kappa_score(self.data['label'].tolist(), self.data['prediction'].tolist()), 0, 
-                      roc_auc_score(self.data['label'].tolist(), self.data['probability'].tolist())
-                    )
+        score = calc_metrics(self.data['label'].tolist(), self.data['prediction'].tolist(), self.data['probability'].tolist())
         if self.data['probability'].sum() != 0:
             print('Confusion matrix: \n ', confusion_matrix(self.data['label'].tolist(), self.data['prediction'].tolist()))
         return score._asdict() if as_dict else score
 
-    def calc_scores_eye(self, as_dict: bool = False, ratio: float = 0.5, top_percent=1.0):
+    def calc_scores_eye(self, as_dict: bool = False, ratio: float = 0.5, top_percent: float = 1.0, mode: str = 'count'):
+        """
+        Calc scores for an eye if multiple pictures are available
+        :param as_dict: Return normal dict, o/w named tuple
+        :param ratio: percent threshold for an pos. prediction
+        :param top_percent: percent of values considered
+        :param mode: count / probs, consider binary predictions or their probabilites
+        :return:
+        """
         eye_data = pd.DataFrame(columns=self.columns)
         self.data.prediction = self.data.prediction.apply(lambda p: p[0] if type(p) == list else p)
         self.data.probability = self.data.probability.apply(lambda p: p[0] if type(p) == list else p)
@@ -176,15 +153,27 @@ class Scores:
                 group.sort_values(by=['probability'], ascending=False)  # sort predictions by confidence
 
             pos = int(group['prediction'][:num_voting_values].sum())  # count positive predictions
+            pos_probs = float(group['probability'][:num_voting_values].sum())
             eye_prediction = 1 if pos / num_voting_values >= ratio else 0
+            eye_prediction_probs = 1 if pos / num_voting_values >= ratio else 0
+
             eye_data = eye_data.append({
                 self.columns[0]: name, self.columns[1]: group.iloc[0, 1], self.columns[2]: eye_prediction,
-                self.columns[3]: 0.0
+                self.columns[3]: pos_probs
             }, ignore_index=True)
 
-        score = Score(f1_score(eye_data['label'].tolist(), eye_data['prediction'].tolist()),
-                      precision_score(eye_data['label'].tolist(), eye_data['prediction'].tolist()),
-                      recall_score(eye_data['label'].tolist(), eye_data['prediction'].tolist()),
-                      accuracy_score(eye_data['label'].tolist(), eye_data['prediction'].tolist()),
-                      cohen_kappa_score(eye_data['label'].tolist(), eye_data['prediction'].tolist()), 0)
+        score = calc_metrics(eye_data['label'].tolist(), eye_data['prediction'].tolist(), eye_data['probability'].tolist())
         return score._asdict() if as_dict else score
+
+
+def calc_metrics(labels: list, preds: list, probs: list, loss: float = 0.0) -> Score:
+    #precision, recall, _ = precision_recall_curve(labels, probs)
+    score = Score(f1_score(labels, preds),
+                  precision_score(labels, preds),
+                  recall_score(labels, preds),
+                  accuracy_score(labels, preds),
+                  cohen_kappa_score(labels, preds),
+                  loss,
+                  roc_auc_score(labels, probs),
+                  average_precision_score(labels, probs))
+    return score
