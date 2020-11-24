@@ -82,6 +82,19 @@ class SegmentsDataset(RetinaDataset):
         self.labels_df = self.seg_df
 
 
+class RetinaBagDataset(RetinaDataset):
+    def __init__(self, csv_file, root_dir, file_type='.jpg', class_iloc=1, augmentations=None, use_prefix=False,
+                 thresh=1, max_bag_size = 100):
+        super().__init__(csv_file, root_dir, file_type, class_iloc, augmentations, use_prefix, thresh)
+        self.max_bag_size = max_bag_size
+        self.bags = self._create_bags()
+
+    def __len__(self):
+        pass
+
+    def __getitem__(self, index) -> T_co:
+        pass
+
 ########################## Dataset Helper Methods #########################
 def get_validation_pipeline(image_size, crop_size):
     return A.Compose([

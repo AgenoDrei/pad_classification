@@ -1,5 +1,4 @@
 from os.path import join
-
 import argparse
 import os
 import sys
@@ -19,6 +18,7 @@ from typing import Tuple
 from include.nn_datasets import RetinaDataset, SegmentsDataset, get_validation_pipeline, get_training_pipeline
 from include.nn_utils import dfs_freeze, Scores, write_scores
 
+
 RES_PATH = ''
 
 
@@ -28,10 +28,11 @@ def run(base_path, model_path, num_epochs):
     config = toml.load('config.toml')
     hp = config['hp']
     hp['pretraining'] = True if model_path else False
-    print(config)
+    print('--------Configuration---------- \n ', config)
 
     device = torch.device(config['gpu_name'] if torch.cuda.is_available() else "cpu")
-    print(f'Using device {device}')
+    print(f'Working on {base_path}!')
+    print(f'using device {device}')
 
     aug_pipeline_train = get_training_pipeline(hp['image_size'], hp['crop_size'])
     aug_pipeline_val = get_validation_pipeline(hp['image_size'], hp['crop_size'])
@@ -47,9 +48,9 @@ def run(base_path, model_path, num_epochs):
 
     desc = f'_transfer_pad_{str("_".join([k[0] + str(hp) for k, hp in hp.items()]))}'
     writer = SummaryWriter(comment=desc)
-    best_model, scores = train_model(net, criterion, optimizer_ft, plateau_scheduler, loaders, device, writer,
+    best_model, scores, eye_scores = train_model(net, criterion, optimizer_ft, plateau_scheduler, loaders, device, writer,
                                      num_epochs=num_epochs, description=desc)
-    return scores
+    return scores, eye_scores
 
 
 def setup_log(data_path):
@@ -135,7 +136,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
         train_scores = metrics.calc_scores(as_dict=True)
         train_scores['loss'] = running_loss / len(loaders[0].dataset)
         write_scores(writer, 'train', train_scores, epoch)
-        val_loss, val_scores = validate(model, criterion, loaders[1], device, writer, epoch)
+        val_loss, val_scores, val_eye_scores = validate(model, criterion, loaders[1], device, writer, epoch)
 
         best_f1_val = val_scores['f1'] if val_scores['f1'] > best_f1_val else best_f1_val
 
@@ -148,7 +149,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
     # validate(model, criterion, loaders[1], device, writer, num_epochs, calc_roc=True)
     torch.save(model.state_dict(), join(RES_PATH, f'model_pad_transfer.pth'))
 
-    return model, val_scores
+    return model, val_scores, val_eye_scores
 
 
 def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False) -> Tuple[float, float]:
@@ -178,7 +179,7 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
     write_scores(writer, 'eye_val', scores_eye, cur_epoch, full_report=True)
     perf_metrics.data.to_csv(join(RES_PATH, f'{cur_epoch}_last_pad_model_{scores["f1"]:0.3}.csv'), index=False)
 
-    return running_loss / len(loader.dataset), scores
+    return running_loss / len(loader.dataset), scores, scores_eye
 
 
 if __name__ == '__main__':
