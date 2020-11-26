@@ -102,7 +102,6 @@ class RetinaBagDataset(RetinaDataset):
         sample = {'frames': [], 'label': bag['label'], 'name': bag['name']}
         eye_img = cv2.imread(os.path.join(self.root_dir, f'{bag["name"]}{self.file_type}'))
         # Apply augmentations BEFORE segmentation
-        eye_img = self.augs(image=eye_img)['image'] if self.augs else eye_img
 
         for y in range(0, bag['h'], self.segment_size):
             for x in range(0, bag['w'], self.segment_size):
@@ -112,6 +111,7 @@ class RetinaBagDataset(RetinaDataset):
                 count_non_black_px = cv2.countNonZero(cv2.cvtColor(segment, cv2.COLOR_BGR2GRAY))
                 if count_non_black_px / self.segment_size ** 2 < self.exclude_black_th:
                     continue
+                segment = self.augs(image=segment)['image'] if self.augs else segment
                 sample['frames'].append(segment)
         max_count_segments = (bag['h'] // self.segment_size) * (bag['w'] // self.segment_size)
         print(f'Segmentation excluded {max_count_segments - len(sample["frames"])} segments')
@@ -132,29 +132,30 @@ class RetinaBagDataset(RetinaDataset):
 
 
 ########################## Dataset Helper Methods #########################
-def get_validation_pipeline(image_size, crop_size):
+def get_validation_pipeline(image_size, crop_size, mode='default'):
     return A.Compose([
-        A.Resize(image_size, image_size, always_apply=True, p=1.0),
+        A.NoOp() if mode == 'mil' else A.Resize(image_size, image_size, always_apply=True, p=1.0),
         A.CenterCrop(crop_size, crop_size, always_apply=True, p=1.0),
         A.Normalize(always_apply=True, p=1.0),
         ToTensorV2(always_apply=True, p=1.0)
     ], p=1.0)
 
 
-def get_training_pipeline(image_size, crop_size, strength=0):
+def get_training_pipeline(image_size, crop_size, mode='default', strength=1.0):
     pipe = A.Compose([
-        A.Resize(image_size, image_size, always_apply=True, p=1.0),
+        A.NoOp if mode == 'mil' else A.Resize(image_size, image_size, always_apply=True, p=1.0),
         A.RandomCrop(crop_size, crop_size, always_apply=True, p=1.0),
-        A.HorizontalFlip(p=0.5),
+        A.HorizontalFlip(p=0.5*strength),
         # A.VerticalFlip(p=0.5),
-        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=5, p=0.3),
+        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=5, p=0.3*strength),
         # border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5),
-        A.OneOf(
-            [A.GaussNoise(p=0.5), A.ISONoise(p=0.5), A.IAAAdditiveGaussianNoise(p=0.25), A.MultiplicativeNoise(p=0.25)],
-            p=0.3),
-        A.OneOf([A.ElasticTransform(border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5), A.GridDistortion(p=0.5)], p=0.3),
-        A.OneOf([A.HueSaturationValue(p=0.5), A.ToGray(p=0.5), A.RGBShift(p=0.5)], p=0.3),
-        A.OneOf([A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2), A.RandomGamma()], p=0.3),
+        A.OneOf([A.GaussNoise(p=0.5), A.ISONoise(p=0.5), A.IAAAdditiveGaussianNoise(p=0.25),
+                 A.MultiplicativeNoise(p=0.25)], p=0.3*strength),
+        A.OneOf([A.ElasticTransform(border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5), A.GridDistortion(p=0.5)],
+                p=0.3*strength),
+        A.OneOf([A.HueSaturationValue(p=0.5), A.ToGray(p=0.5), A.RGBShift(p=0.5)], p=0.3*strength),
+        A.OneOf([A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2), A.RandomGamma()],
+                p=0.3*strength),
         A.Normalize(always_apply=True, p=1.0),
         ToTensorV2(always_apply=True, p=1.0)
     ], p=1.0)

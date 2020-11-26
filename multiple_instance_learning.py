@@ -25,7 +25,6 @@ RES_PATH = ''
 
 def run(base_path, model_path, num_epochs):
     setup_log(base_path)
-    # load hyperparameter
     config = toml.load('config_mil.toml')
     hp = config['hp']
     hp['pretraining'] = True if model_path else False
@@ -35,8 +34,8 @@ def run(base_path, model_path, num_epochs):
     print(f'Working on {base_path}!')
     print(f'using device {device}')
 
-    aug_pipeline_train = get_training_pipeline(hp['image_size'], hp['crop_size'])
-    aug_pipeline_val = get_validation_pipeline(hp['image_size'], hp['crop_size'])
+    aug_pipeline_train = get_training_pipeline(hp['image_size'], hp['crop_size'], mode='mil', strength=hp['aug_strength'])
+    aug_pipeline_val = get_validation_pipeline(hp['image_size'], hp['crop_size'], mode='mil')
 
     loaders = get_dataset(RetinaBagDataset, base_path, hp, aug_pipeline_train, aug_pipeline_val, config['num_workers'])
     net = prepare_model(model_path, hp, device)
