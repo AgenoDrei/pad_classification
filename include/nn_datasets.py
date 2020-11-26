@@ -1,8 +1,10 @@
-from os.path import join
+from typing import Callable
 
+import os
+from os.path import join
+import numpy as np
 import albumentations as A
 import cv2
-import os
 import pandas as pd
 import torch
 from albumentations.pytorch import ToTensorV2
@@ -17,10 +19,8 @@ class RetinaDataset(Dataset):
         :param csv_file: path to csv file with labels
         :param root_dir: path to folder with sample images
         :param file_type: file ending of images (e.g '.jpg')
-        :param transform: pytorch data augmentation
         :param augmentations: albumentation data augmentation
         :param use_prefix: data folder contains subfolders for classes (pos / neg)
-        :param boost_frames: boost frames if a third weak prediciton column is available
         """
         self.labels_df = pd.read_csv(csv_file)
         self.root_dir = root_dir
@@ -60,7 +60,8 @@ class RetinaDataset(Dataset):
         img = cv2.imread(img_name)
         assert img is not None, f'Image {img_name} has to exist'
 
-        sample = {'orig_img': img, 'image': img, 'label': self.class_mapping[cls], 'max_fs': self.labels_df.iloc[idx, self.class_iloc],
+        sample = {'orig_img': img, 'image': img, 'label': self.class_mapping[cls],
+                  'max_fs': self.labels_df.iloc[idx, self.class_iloc],
                   'name': os.path.basename(img_name), 'eye': self.labels_df.iloc[idx, 0][:-1]}
         if self.augs:
             sample['image'] = self.augs(image=img)['image']
@@ -75,7 +76,7 @@ class SegmentsDataset(RetinaDataset):
         for row in self.labels_df.itertuples(index=False):
             for i in range(segments):
                 self.seg_df = self.seg_df.append({
-                    self.labels_df.columns[0]: row[0] + str(i+1),
+                    self.labels_df.columns[0]: row[0] + str(i + 1),
                     self.labels_df.columns[1]: row[1]
                 }, ignore_index=True)
         print(f'Original dataframe length: {len(self.labels_df)}, expanded length: {len(self.seg_df)}')
@@ -84,16 +85,51 @@ class SegmentsDataset(RetinaDataset):
 
 class RetinaBagDataset(RetinaDataset):
     def __init__(self, csv_file, root_dir, file_type='.jpg', class_iloc=1, augmentations=None, use_prefix=False,
-                 thresh=1, max_bag_size = 100):
+                 thresh=1, max_bag_size=100, segment_size=399, exclude_black_th=0.5):
         super().__init__(csv_file, root_dir, file_type, class_iloc, augmentations, use_prefix, thresh)
         self.max_bag_size = max_bag_size
+        self.segment_size = segment_size
+        self.exclude_black_th = exclude_black_th
         self.bags = self._create_bags()
 
     def __len__(self):
-        pass
+        return len(self.bags)
 
-    def __getitem__(self, index) -> T_co:
-        pass
+    def __getitem__(self, idx):
+        assert not torch.is_tensor(idx)
+        bag = self.bags[idx]
+
+        sample = {'frames': [], 'label': bag['label'], 'name': bag['name']}
+        eye_img = cv2.imread(os.path.join(self.root_dir, f'{bag["name"]}{self.file_type}'))
+        # Apply augmentations BEFORE segmentation
+        eye_img = self.augs(image=eye_img)['image'] if self.augs else eye_img
+
+        for y in range(0, bag['h'], self.segment_size):
+            for x in range(0, bag['w'], self.segment_size):
+                segment = eye_img[y:y + self.segment_size, x:x + self.segment_size]
+                if segment.shape[0] * segment.shape[1] != self.segment_size ** 2:
+                    continue
+                count_non_black_px = cv2.countNonZero(cv2.cvtColor(segment, cv2.COLOR_BGR2GRAY))
+                if count_non_black_px / self.segment_size ** 2 < self.exclude_black_th:
+                    continue
+                sample['frames'].append(segment)
+        max_count_segments = (bag['h'] // self.segment_size) * (bag['w'] // self.segment_size)
+        print(f'Segmentation excluded {max_count_segments - len(sample["frames"])} segments')
+        sample['frames'] = torch.stack(sample['frames']) if self.augs else np.stack(sample['frames'])
+        return sample
+
+    def _create_bags(self):
+        bags = []
+        for row in self.labels_df.itertuples(index=False):
+            bag_label = 0 if row[self.class_iloc] < self.class_threshold else 1
+            bag_label = self.class_mapping[bag_label]
+            bag_name = row[0]
+            bag_img = cv2.imread(join(self.root_dir, bag_name + self.file_type))
+            bag_height, bag_width = bag_img.shape[:2]
+            bags.append({'name': bag_name, 'label': bag_label, 'w': bag_width, 'h': bag_height})
+
+        return bags
+
 
 ########################## Dataset Helper Methods #########################
 def get_validation_pipeline(image_size, crop_size):
@@ -110,7 +146,7 @@ def get_training_pipeline(image_size, crop_size, strength=0):
         A.Resize(image_size, image_size, always_apply=True, p=1.0),
         A.RandomCrop(crop_size, crop_size, always_apply=True, p=1.0),
         A.HorizontalFlip(p=0.5),
-        #A.VerticalFlip(p=0.5),
+        # A.VerticalFlip(p=0.5),
         A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=5, p=0.3),
         # border_mode=cv2.BORDER_CONSTANT, value=0, p=0.5),
         A.OneOf(
@@ -123,3 +159,29 @@ def get_training_pipeline(image_size, crop_size, strength=0):
         ToTensorV2(always_apply=True, p=1.0)
     ], p=1.0)
     return pipe
+
+
+def get_dataset(dataset: Callable, base_name: str, hp: dict, aug_pipeline_train: A.Compose, aug_pipeline_val: A.Compose,
+                num_workers: int):
+    set_names = ('train', 'val')
+    train_dataset = dataset(join(base_name, 'labels_train.csv'), join(base_name, set_names[0]),
+                            augmentations=aug_pipeline_train, file_type='.jpg', use_prefix=False,
+                            class_iloc=1,
+                            thresh=hp['class_threshold'], segment_size=hp['crop_size'])
+    val_dataset = dataset(join(base_name, 'labels_val.csv'), join(base_name, set_names[1]),
+                          augmentations=aug_pipeline_val, file_type='.jpg', use_prefix=False, class_iloc=1,
+                          thresh=hp['class_threshold'], segment_size=hp['crop_size'])
+    sample_weights = [train_dataset.get_weight(i) for i in range(len(train_dataset))]
+    sampler = torch.utils.data.sampler.WeightedRandomSampler(sample_weights, len(train_dataset), replacement=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=hp['batch_size'], shuffle=False,
+                                               sampler=sampler, num_workers=num_workers)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=hp['batch_size'], shuffle=False,
+                                             num_workers=num_workers)
+    print(f'Dataset ({dataset.__name__}) info:\n'
+          f' Train size: {len(train_dataset)},\n'
+          f' Validation size: {len(val_dataset)}')
+    return train_loader, val_loader
+
+
+if __name__ == '__main__':
+    pass
