@@ -9,6 +9,7 @@
 
 data/fundus_pavk_processed
 data/folds/
+data/*folds_*
 .idea/
 runs/
 *.pth

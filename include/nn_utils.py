@@ -117,10 +117,12 @@ class Scores:
         self.data = pd.DataFrame(columns=self.columns)
 
     def add(self, preds: torch.Tensor, labels: torch.Tensor, tags: list = None, probs: torch.Tensor = None):
+        if probs and probs.size(1) > 1:
+            probs[:, 0] = probs[:, 1]
         new_data = tags if tags is not None else ['train' for i in range(len(labels.tolist()))], \
                    labels.tolist(), \
                    preds.tolist(), \
-                   probs[:, 1].tolist() if probs is not None else [0 for i in range(len(labels.tolist()))]
+                   probs[:, 0].tolist() if probs is not None else [0 for i in range(len(labels.tolist()))]
         new_data_dict = {col: new_data[i] for i, col in enumerate(self.columns)}
         self.data = self.data.append(pd.DataFrame(new_data_dict), ignore_index=True)
         # pd.concat([self.data].extend(pd.DataFrame()), ignore_index=True)

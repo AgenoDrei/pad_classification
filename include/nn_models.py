@@ -30,12 +30,12 @@ class RetinaNet2(nn.Module):
 
 
 class BagNet(nn.Module):
-    def __init__(self, stump, num_attention_neurons=128, attention_strategy='normal', pooling_strategy='avg', stump_type='alexnet'):
+    def __init__(self, stump, num_attention_neurons=128, attention_strategy='normal', pooling_strategy='avg', stump_type='AlexNet'):
         super(BagNet, self).__init__()
         self.stump = stump
         self.stump_type = stump_type
         self.attention_strategy = attention_strategy
-        self.L = 4096 if stump_type == 'alexnet' else 1536  # FC layer size of AlexNet / Inception
+        self.L = 4096 if stump_type == 'AlexNet' else 1536  # FC layer size of AlexNet / Inception
         self.D = num_attention_neurons
         self.K = 1  # Just why, paper, whyyyy? -> Vector reasons, maybe?
         self.feature_extractor_part1 = stump.features
@@ -49,9 +49,9 @@ class BagNet(nn.Module):
         #    nn.ReLU(inplace=True),
         #)
         self.feature_extractor_part2 = None
-        if stump_type == 'alexnet':
+        if stump_type == 'AlexNet':
              self.feature_extractor_part2 = stump.classifier[:-1]
-        elif stump_type == 'inception':
+        elif stump_type == 'Inception':
             stump.last_linear = nn.Identity()
             self.feature_extractor_part2 = stump.avg_pool if pooling_strategy == 'avg' else nn.MaxPool2d(stump.avg_pool.kernel_size, stride=stump.avg_pool.stride)
         self.attention, self.att_v, self.att_u, self.att_weights = self._get_attention_net(attention_strategy)
@@ -63,11 +63,11 @@ class BagNet(nn.Module):
     def forward(self, x):
         x = x.squeeze(0)
         H = self.feature_extractor_part1(x)
-        if self.stump_type == 'alexnet':
+        if self.stump_type == 'AlexNet':
             H = self.pool(H)
             H = H.view(-1, self.num_features)
         H = self.feature_extractor_part2(H)  # N x L, Number of bag elements
-        if self.stump_type == 'inception':
+        if self.stump_type == 'Inception':
             H = H.view(-1, 1536)
 
         if self.attention_strategy == 'normal':
@@ -98,7 +98,7 @@ class BagNet(nn.Module):
         Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
         neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
 
-        return neg_log_likelihood, A
+        return neg_log_likelihood, A, Y_prob
 
     def _get_pooling_params(self, strategy='avg'):
         if strategy == 'avg':

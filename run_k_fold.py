@@ -1,9 +1,11 @@
-from transfer_learning import run
+import transfer_learning
+import multiple_instance_learning
 from include.nn_utils import Score
 import argparse
 import sys
 from os.path import join
 import math
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PAD k-fold')
@@ -11,6 +13,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', help='Number of training epochs', type=int, default=50)
     parser.add_argument('--model', help='Path to pretrained model', type=str, default=None)
     parser.add_argument('--folds', '-k', help='number of folds', type=int)
+    parser.add_argument('--strategy', '-s', help='MIL/CNN', type=str, default='CNN')
 
     args = parser.parse_args()
     
@@ -19,7 +22,7 @@ if __name__ == '__main__':
     mean_score = Score(0, 0, 0, 0, 0, 0, 0, 0)._asdict()
     mean_score_eyes = Score(0, 0, 0, 0, 0, 0, 0, 0)._asdict()
     for i in range(args.folds):
-        scores, score_eyes = run(join(args.data, f'fold{i}'), args.model, args.epochs)
+        scores, score_eyes = transfer_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs) if args.strategy == 'CNN' else multiple_instance_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs)
         mean_score = {k: mean_score[k] + v / args.folds for k, v in scores.items()}
         mean_score_eyes = {k: mean_score_eyes[k] + v / args.folds for k, v in score_eyes.items()}
 

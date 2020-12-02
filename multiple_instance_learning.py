@@ -18,7 +18,7 @@ from typing import Tuple
 from include.nn_datasets import RetinaDataset, SegmentsDataset, get_validation_pipeline, get_training_pipeline, \
     RetinaBagDataset, get_dataset
 from include.nn_models import BagNet
-from include.nn_utils import dfs_freeze, Scores, write_scores
+from include.nn_utils import dfs_freeze, Scores, write_scores, Score
 
 RES_PATH = ''
 
@@ -34,8 +34,8 @@ def run(base_path, model_path, num_epochs):
     print(f'Working on {base_path}!')
     print(f'using device {device}')
 
-    aug_pipeline_train = get_training_pipeline(hp['image_size'], hp['crop_size'], mode='mil', strength=hp['aug_strength'])
-    aug_pipeline_val = get_validation_pipeline(hp['image_size'], hp['crop_size'], mode='mil')
+    aug_pipeline_train = get_training_pipeline(0, hp['crop_size'], mode='mil', strength=hp['aug_strength'])
+    aug_pipeline_val = get_validation_pipeline(0, hp['crop_size'], mode='mil')
 
     loaders = get_dataset(RetinaBagDataset, base_path, hp, aug_pipeline_train, aug_pipeline_val, config['num_workers'])
     net = prepare_model(model_path, hp, device)
@@ -49,7 +49,7 @@ def run(base_path, model_path, num_epochs):
                               weight_decay=hp['weight_decay'])
 
     criterion = CrossEntropyLoss()
-    plateau_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, mode='min', factor=0.1, patience=5, verbose=True)
+    plateau_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, mode='min', factor=0.1, patience=12, verbose=True)
 
     desc = f'_transfer_pad_{str("_".join([k[0] + str(hp) for k, hp in hp.items()]))}'
     writer = SummaryWriter(comment=desc)
@@ -74,9 +74,8 @@ def prepare_model(model_path, hp, device):
         net.load_state_dict(torch.load(model_path, map_location=device))
         print('Loaded stump: ', len(net.features))
     net = BagNet(net, num_attention_neurons=hp['attention_neurons'], attention_strategy=hp['attention'],
-                 pooling_strategy=hp['pooling'], stump_type=hp['stump'])
-    print(f'Model info: {net.__class__.__name__}, layer: {len(net.features)},'
-          f' #frozen layer: {len(net.features) * hp["freeze"]}')
+                 pooling_strategy=hp['pooling'], stump_type=hp['network'])
+    print(f'Model info: {net.__class__.__name__}, #frozen layer: {hp["freeze"]}')
     return net.to(device)
 
 
@@ -94,7 +93,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
         metrics = Scores()
         # Iterate over data.
         for i, batch in tqdm(enumerate(loaders[0]), total=len(loaders[0]), desc=f'Epoch {epoch}'):
-            inputs = batch['image'].to(device, dtype=torch.float)
+            inputs = batch['frames'].to(device, dtype=torch.float)
             labels = batch['label'].to(device)
 
             model.train()
@@ -130,7 +129,7 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
     perf_metrics = Scores()
 
     for i, batch in tqdm(enumerate(loader), total=len(loader), desc='Validation'):
-        inputs = batch['image'].to(device, dtype=torch.float)
+        inputs = batch['frames'].to(device, dtype=torch.float)
         labels = batch['label'].to(device)
         names = batch['name']
 
@@ -148,7 +147,7 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
     write_scores(writer, 'val', scores, cur_epoch, full_report=True)
     perf_metrics.data.to_csv(join(RES_PATH, f'{cur_epoch}_last_pad_model_{scores["f1"]:0.3}.csv'), index=False)
 
-    return running_loss / len(loader.dataset), scores, {}
+    return running_loss / len(loader.dataset), scores, Score(0, 0, 0, 0, 0, 0, 0, 0)._asdict()
 
 
 if __name__ == '__main__':

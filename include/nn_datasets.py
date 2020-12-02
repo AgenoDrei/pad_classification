@@ -114,7 +114,7 @@ class RetinaBagDataset(RetinaDataset):
                 segment = self.augs(image=segment)['image'] if self.augs else segment
                 sample['frames'].append(segment)
         max_count_segments = (bag['h'] // self.segment_size) * (bag['w'] // self.segment_size)
-        print(f'Segmentation excluded {max_count_segments - len(sample["frames"])} segments')
+        #print(f'Segmentation excluded {max_count_segments - len(sample["frames"])} segments')
         sample['frames'] = torch.stack(sample['frames']) if self.augs else np.stack(sample['frames'])
         return sample
 
@@ -143,7 +143,7 @@ def get_validation_pipeline(image_size, crop_size, mode='default'):
 
 def get_training_pipeline(image_size, crop_size, mode='default', strength=1.0):
     pipe = A.Compose([
-        A.NoOp if mode == 'mil' else A.Resize(image_size, image_size, always_apply=True, p=1.0),
+        A.NoOp() if mode == 'mil' else A.Resize(image_size, image_size, always_apply=True, p=1.0),
         A.RandomCrop(crop_size, crop_size, always_apply=True, p=1.0),
         A.HorizontalFlip(p=0.5*strength),
         # A.VerticalFlip(p=0.5),
@@ -168,10 +168,10 @@ def get_dataset(dataset: Callable, base_name: str, hp: dict, aug_pipeline_train:
     train_dataset = dataset(join(base_name, 'labels_train.csv'), join(base_name, set_names[0]),
                             augmentations=aug_pipeline_train, file_type='.jpg', use_prefix=False,
                             class_iloc=1,
-                            thresh=hp['class_threshold'], segment_size=hp['crop_size'])
+                            thresh=hp['class_threshold'], segment_size=hp['crop_size'], exclude_black_th=hp['black_threshold'])
     val_dataset = dataset(join(base_name, 'labels_val.csv'), join(base_name, set_names[1]),
                           augmentations=aug_pipeline_val, file_type='.jpg', use_prefix=False, class_iloc=1,
-                          thresh=hp['class_threshold'], segment_size=hp['crop_size'])
+                          thresh=hp['class_threshold'], segment_size=hp['crop_size'], exclude_black_th=hp['black_threshold'])
     sample_weights = [train_dataset.get_weight(i) for i in range(len(train_dataset))]
     sampler = torch.utils.data.sampler.WeightedRandomSampler(sample_weights, len(train_dataset), replacement=True)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=hp['batch_size'], shuffle=False,
