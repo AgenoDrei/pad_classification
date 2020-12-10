@@ -132,13 +132,14 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
         inputs = batch['frames'].to(device, dtype=torch.float)
         labels = batch['label'].to(device)
         names = batch['name']
+        positions = batch['pos']
 
         with torch.no_grad():
             loss, attention_weights, probs = model.calculate_objective(inputs, labels)
             error, preds = model.calculate_classification_error(inputs, labels)
             running_loss += loss.item()
 
-        perf_metrics.add(preds, labels, probs=probs, tags=names)
+        perf_metrics.add(preds, labels, probs=probs, tags=names, attention=attention_weights, pos=positions)
 
     scores = perf_metrics.calc_scores(as_dict=True)
     scores['loss'] = running_loss / len(loader.dataset)
