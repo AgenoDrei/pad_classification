@@ -99,7 +99,7 @@ class RetinaBagDataset(RetinaDataset):
         assert not torch.is_tensor(idx)
         bag = self.bags[idx]
 
-        sample = {'frames': [], 'label': bag['label'], 'name': bag['name'], 'pos': []}
+        sample = {'frames': [], 'label': bag['label'], 'name': bag['name']}
         eye_img = cv2.imread(os.path.join(self.root_dir, f'{bag["name"]}{self.file_type}'))
         # Apply augmentations BEFORE segmentation
 
@@ -113,7 +113,7 @@ class RetinaBagDataset(RetinaDataset):
                     continue
                 segment = self.augs(image=segment)['image'] if self.augs else segment
                 sample['frames'].append(segment)
-                sample['pos'].append((y, x, self.segment_size))
+                #sample['pos'].append((y, x, self.segment_size))
         max_count_segments = (bag['h'] // self.segment_size) * (bag['w'] // self.segment_size)
         #print(f'Segmentation excluded {max_count_segments - len(sample["frames"])} segments')
         sample['frames'] = torch.stack(sample['frames']) if self.augs else np.stack(sample['frames'])
