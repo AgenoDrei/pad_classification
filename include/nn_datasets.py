@@ -10,6 +10,8 @@ import torch
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset
 
+from include.nn_processing import GrahamFilter
+
 
 class RetinaDataset(Dataset):
     def __init__(self, csv_file, root_dir, file_type='.png', class_iloc=1, augmentations=None,
@@ -101,8 +103,9 @@ class RetinaBagDataset(RetinaDataset):
 
         sample = {'frames': [], 'label': bag['label'], 'name': bag['name']}
         eye_img = cv2.imread(os.path.join(self.root_dir, f'{bag["name"]}{self.file_type}'))
-        # Apply augmentations BEFORE segmentation
+        eye_img = cv2.cvtColor(eye_img, cv2.COLOR_BGR2RGB)
 
+        # Apply augmentations BEFORE segmentation?
         for y in range(0, bag['h'], self.segment_size):
             for x in range(0, bag['w'], self.segment_size):
                 segment = eye_img[y:y + self.segment_size, x:x + self.segment_size]
@@ -142,10 +145,11 @@ def get_validation_pipeline(image_size, crop_size, mode='default'):
     ], p=1.0)
 
 
-def get_training_pipeline(image_size, crop_size, mode='default', strength=1.0):
+def get_training_pipeline(image_size, crop_size, mode='default', strength=1.0, graham=False):
     pipe = A.Compose([
         A.NoOp() if mode == 'mil' else A.Resize(image_size, image_size, always_apply=True, p=1.0),
         A.RandomCrop(crop_size, crop_size, always_apply=True, p=1.0),
+        GrahamFilter() if graham else A.NoOp(),
         A.HorizontalFlip(p=0.5*strength),
         # A.VerticalFlip(p=0.5),
         A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=5, p=0.3*strength),

@@ -34,7 +34,7 @@ def run(base_path, model_path, num_epochs):
     print(f'Working on {base_path}!')
     print(f'using device {device}')
 
-    aug_pipeline_train = get_training_pipeline(0, hp['crop_size'], mode='mil', strength=hp['aug_strength'])
+    aug_pipeline_train = get_training_pipeline(0, hp['crop_size'], mode='mil', strength=hp['aug_strength'], graham=hp['graham'])
     aug_pipeline_val = get_validation_pipeline(0, hp['crop_size'], mode='mil')
 
     loaders = get_dataset(RetinaBagDataset, base_path, hp, aug_pipeline_train, aug_pipeline_val, config['num_workers'])
