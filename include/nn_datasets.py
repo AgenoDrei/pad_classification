@@ -108,8 +108,8 @@ class RetinaBagDataset(RetinaDataset):
                 segment = eye_img[y:y + self.segment_size, x:x + self.segment_size]
                 if segment.shape[0] * segment.shape[1] != self.segment_size ** 2:
                     continue
-                count_non_black_px = cv2.countNonZero(cv2.cvtColor(segment, cv2.COLOR_BGR2GRAY))
-                if count_non_black_px / self.segment_size ** 2 < self.exclude_black_th:
+                count_color_px = cv2.countNonZero(cv2.cvtColor(segment, cv2.COLOR_BGR2GRAY))
+                if count_color_px / self.segment_size ** 2 < self.exclude_black_th:
                     continue
                 segment = self.augs(image=segment)['image'] if self.augs else segment
                 sample['frames'].append(segment)
