@@ -5,6 +5,7 @@ import sys
 import time
 import toml
 import torch
+import shutil
 import torch.optim as optim
 from pretrainedmodels import inceptionv4
 from torch.nn import CrossEntropyLoss, Linear
@@ -29,6 +30,7 @@ def run(base_path, model_path, num_epochs):
     hp = config['hp']
     hp['pretraining'] = True if model_path else False
     print('--------Configuration---------- \n ', config)
+    shutil.copy2('config_mil.toml', RES_PATH)
 
     device = torch.device(config['gpu_name'] if torch.cuda.is_available() else "cpu")
     print(f'Working on {base_path}!')

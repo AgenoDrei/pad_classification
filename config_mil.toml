@@ -15,5 +15,5 @@ attention_neurons = 256
 bag_size = 100
 attention = "normal"
 pooling = "max"
-black_threshold = 0.55
-graham = true
+black_threshold = 0.5
+graham = false

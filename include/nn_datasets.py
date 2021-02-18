@@ -103,7 +103,7 @@ class RetinaBagDataset(RetinaDataset):
 
         sample = {'frames': [], 'label': bag['label'], 'name': bag['name']}
         eye_img = cv2.imread(os.path.join(self.root_dir, f'{bag["name"]}{self.file_type}'))
-        eye_img = cv2.cvtColor(eye_img, cv2.COLOR_BGR2RGB)
+        #eye_img = cv2.cvtColor(eye_img, cv2.COLOR_BGR2RGB)
 
         # Apply augmentations BEFORE segmentation?
         for y in range(0, bag['h'], self.segment_size):

@@ -11,7 +11,8 @@ class GrahamFilter(ImageOnlyTransform):
     def get_params_dependent_on_targets(self, params):
         pass
 
-    def apply(self, img, sigma=10):
+    def apply(self, img, **args):
+        sigma = 10
         img = cv2.addWeighted(img, 4, cv2.GaussianBlur(img, (0, 0), sigma), -4, 128)
         return img
 
