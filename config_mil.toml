@@ -17,3 +17,4 @@ attention = "normal"
 pooling = "max"
 black_threshold = 0.5
 graham = false
+model_loading = 'full' # full OR features

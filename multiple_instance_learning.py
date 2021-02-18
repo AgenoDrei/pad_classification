@@ -1,25 +1,23 @@
-from os.path import join
 import argparse
 import os
+import shutil
 import sys
 import time
+from os.path import join
+from typing import Tuple
 import toml
 import torch
-import shutil
 import torch.optim as optim
-from pretrainedmodels import inceptionv4
+from torch import nn
 from torch.nn import CrossEntropyLoss, Linear
 from torch.optim import lr_scheduler
-from torch.utils.data import Dataset
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import models
 from tqdm import tqdm
-from typing import Tuple
-
-from include.nn_datasets import RetinaDataset, SegmentsDataset, get_validation_pipeline, get_training_pipeline, \
+from include.nn_datasets import get_validation_pipeline, get_training_pipeline, \
     RetinaBagDataset, get_dataset
 from include.nn_models import BagNet
-from include.nn_utils import dfs_freeze, Scores, write_scores, Score
+from include.nn_utils import Scores, write_scores, Score
 
 RES_PATH = ''
 
@@ -72,11 +70,14 @@ def prepare_model(model_path, hp, device):
         net = models.alexnet(pretrained=True)
         net.classifier[-1] = Linear(net.classifier[-1].in_features, 2)
 
-    if hp['pretraining']:
+    if hp['pretraining'] and hp['model_loading'] == 'features':
         net.load_state_dict(torch.load(model_path, map_location=device))
         print('Loaded stump: ', len(net.features))
     net = BagNet(net, num_attention_neurons=hp['attention_neurons'], attention_strategy=hp['attention'],
                  pooling_strategy=hp['pooling'], stump_type=hp['network'])
+    if hp['pretaining'] and hp['model_loading'] == 'full':
+        net.load_state_dict(torch.load(model_path, map_location=device), strict=False)
+        net.classifier = nn.Sequential(nn.Linear(net.L * net.K, 1), nn.Sigmoid())
     print(f'Model info: {net.__class__.__name__}, #frozen layer: {hp["freeze"]}')
     return net.to(device)
 
