@@ -1,0 +1,20 @@
+gpu_name = "cuda:0"
+num_workers = 28
+
+[hp]
+batch_size = 1
+learning_rate = 0.0001
+weight_decay = [0.003, 0.001, 0.0001]
+optimizer = "Adam"
+network = "AlexNet"
+crop_size = 399
+freeze = 0.0
+class_threshold = 1
+aug_strength = [0, 0.25, 0.5, 0.75, 1.0]
+attention_neurons = [128, 256, 384, 512]
+bag_size = 100
+attention = "normal"
+pooling = ["max", "avg"]
+black_threshold = 0.5
+graham = false
+model_loading = 'features' # full OR extract OR features
