@@ -13,7 +13,7 @@ from sklearn.model_selection import StratifiedKFold
 from tqdm import tqdm
 
 COL_ID = 'ID'
-COL_CLASS = 'pavk_FS_max'
+COL_CLASS = 'diagnosis'
 
 def run(input_path, output_path, k, labels_path):
     df = pd.read_csv(labels_path)

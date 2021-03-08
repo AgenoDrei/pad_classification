@@ -161,7 +161,7 @@ class Scores:
             pos = int(group['prediction'][:num_voting_values].sum())  # count positive predictions
             pos_probs = float(group['probability'][:num_voting_values].sum())
             eye_prediction = 1 if pos / num_voting_values >= ratio else 0
-            eye_prediction_probs = 1 if pos / num_voting_values >= ratio else 0
+            eye_prediction_probs = pos_probs / num_voting_values 
 
             eye_data = eye_data.append({
                 self.columns[0]: name, self.columns[1]: group.iloc[0, 1], self.columns[2]: eye_prediction,

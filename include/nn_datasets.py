@@ -101,7 +101,7 @@ class RetinaBagDataset(RetinaDataset):
         assert not torch.is_tensor(idx)
         bag = self.bags[idx]
 
-        sample = {'frames': [], 'label': bag['label'], 'name': bag['name']}
+        sample = {'frames': [], 'label': bag['label'], 'name': bag['name'], 'pid': bag['name'][:-1]}
         eye_img = cv2.imread(os.path.join(self.root_dir, f'{bag["name"]}{self.file_type}'))
         #eye_img = cv2.cvtColor(eye_img, cv2.COLOR_BGR2RGB)
 
@@ -124,14 +124,18 @@ class RetinaBagDataset(RetinaDataset):
 
     def _create_bags(self):
         bags = []
+        new_df = pd.DataFrame(columns=self.labels_df.columns)
         for row in self.labels_df.itertuples(index=False):
             bag_label = 0 if row[self.class_iloc] < self.class_threshold else 1
             bag_label = self.class_mapping[bag_label]
             bag_name = row[0]
             bag_img = cv2.imread(join(self.root_dir, bag_name + self.file_type))
+            assert bag_img is not None 
             bag_height, bag_width = bag_img.shape[:2]
+            #if bag_width > 3000:
+                #new_df = new_df.append({self.labels_df.columns[0]: row[0], self.labels_df.columns[1]: row[1]}, ignore_index=True)
             bags.append({'name': bag_name, 'label': bag_label, 'w': bag_width, 'h': bag_height})
-
+        #self.labels_df = new_df
         return bags
 
 

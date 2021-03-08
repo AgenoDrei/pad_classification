@@ -22,10 +22,10 @@ from include.nn_utils import Scores, write_scores, Score
 RES_PATH = ''
 
 
-def run(base_path, model_path, num_epochs):
+def run(base_path, model_path, num_epochs, custom_hp = None):
     setup_log(base_path)
     config = toml.load('config_mil.toml')
-    hp = config['hp']
+    hp = custom_hp if custom_hp else config['hp'] 
     hp['pretraining'] = True if model_path else False
     print('--------Configuration---------- \n ', config)
     shutil.copy2('config_mil.toml', RES_PATH)
@@ -75,9 +75,16 @@ def prepare_model(model_path, hp, device):
         print('Loaded stump: ', len(net.features))
     net = BagNet(net, num_attention_neurons=hp['attention_neurons'], attention_strategy=hp['attention'],
                  pooling_strategy=hp['pooling'], stump_type=hp['network'])
-    if hp['pretaining'] and hp['model_loading'] == 'full':
+    if hp['pretraining'] and hp['model_loading'] == 'full':
         net.load_state_dict(torch.load(model_path, map_location=device), strict=False)
         net.classifier = nn.Sequential(nn.Linear(net.L * net.K, 1), nn.Sigmoid())
+        net.attention = nn.Sequential(nn.Linear(net.L, net.D), nn.Tanh(), nn.Linear(net.D, net.K))
+
+    if hp['pretraining'] and hp['model_loading'] == 'extract':
+        net.load_state_dict(torch.load(model_path, map_location=device), strict=False)
+        net2 = BagNet(net.stump, num_attention_neurons=hp['attention_neurons'], attention_strategy=hp['attention'],
+                                 pooling_strategy=hp['pooling'], stump_type=hp['network'])
+
     print(f'Model info: {net.__class__.__name__}, #frozen layer: {hp["freeze"]}')
     return net.to(device)
 
@@ -134,7 +141,7 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
     for i, batch in tqdm(enumerate(loader), total=len(loader), desc='Validation'):
         inputs = batch['frames'].to(device, dtype=torch.float)
         labels = batch['label'].to(device)
-        names = batch['name']
+        names = batch['pid']
         #positions = batch['pos']
 
         with torch.no_grad():
@@ -146,12 +153,12 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
 
     scores = perf_metrics.calc_scores(as_dict=True)
     scores['loss'] = running_loss / len(loader.dataset)
-    # scores_eye = perf_metrics.calc_scores_eye(as_dict=True, ratio=0.5)
-    # write_scores(writer, 'eye_val', scores_eye, cur_epoch, full_report=True)
+    scores_eye = perf_metrics.calc_scores_eye(as_dict=True, ratio=0.5)
+    write_scores(writer, 'eye_val', scores_eye, cur_epoch, full_report=True)
     write_scores(writer, 'val', scores, cur_epoch, full_report=True)
     perf_metrics.data.to_csv(join(RES_PATH, f'{cur_epoch}_last_pad_model_{scores["f1"]:0.3}.csv'), index=False)
 
-    return running_loss / len(loader.dataset), scores, Score(0, 0, 0, 0, 0, 0, 0, 0)._asdict()
+    return running_loss / len(loader.dataset), scores, scores_eye#Score(0, 0, 0, 0, 0, 0, 0, 0)._asdict()
 
 
 if __name__ == '__main__':
