@@ -62,6 +62,8 @@ def get_hyperparameter_permutations(hp_space, mode):
                 possible_values = hps[key]
                 hps[key] = possible_values[np.random.randint(0, len(possible_values))]
             hp_permutations.append(hps)
+    elif mode == 'exhaustive':
+        raise Exception(f'Not yet implemented')
     else:
         raise Exception(f'Mode {mode} not available')
 
