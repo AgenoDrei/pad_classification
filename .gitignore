@@ -13,4 +13,4 @@ data/*folds_*
 .idea/
 runs/
 *.pth
-2020**
+202**

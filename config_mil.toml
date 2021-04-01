@@ -4,14 +4,14 @@ num_workers = 28
 [hp]
 batch_size = 1
 learning_rate = 0.0001
-weight_decay = 0.003
+weight_decay = 0.001
 optimizer = "Adam"
 network = "AlexNet"
 crop_size = 399
 freeze = 0.0
 class_threshold = 1
 aug_strength = 1
-attention_neurons = 256
+attention_neurons = 384
 bag_size = 100
 attention = "normal"
 pooling = "max"

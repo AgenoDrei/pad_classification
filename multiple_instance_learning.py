@@ -51,7 +51,7 @@ def run(base_path, model_path, num_epochs, custom_hp = None):
     criterion = CrossEntropyLoss()
     plateau_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, mode='min', factor=0.1, patience=12, verbose=True)
 
-    desc = f'_transfer_pad_{str("_".join([k[0] + str(hp) for k, hp in hp.items()]))}'
+    desc = f'_mil_pad_{str("_".join([k[0] + str(hp) for k, hp in hp.items()]))}_{os.path.basename(base_path)}'
     writer = SummaryWriter(comment=desc)
     best_model, scores, eye_scores = train_model(net, criterion, optimizer_ft, plateau_scheduler, loaders, device,
                                                  writer, num_epochs=num_epochs)

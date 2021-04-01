@@ -10,8 +10,9 @@ from pprint import pprint as pp
 from os.path import join
 import math
 
+
 CONFIG_PATH = 'config_hyperparameter_search.toml'
-NUM_PERMUTATIONS = 20
+NUM_PERMUTATIONS = 40
 
 
 def run(data_path, model_path, num_epochs, strategy, mode='random'):
@@ -38,7 +39,7 @@ def run(data_path, model_path, num_epochs, strategy, mode='random'):
         pp(score_eyes)
         print('--------------------------')
 
-    results = sorted(results, key=lambda d: d[1]['roc'])
+    results = sorted(results, key=lambda d: d[1]['roc'], reverse=True)
     print('############ TOP 5 ############')
     for r in results[:5]:
         pp(r[0])
