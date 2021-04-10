@@ -1,6 +1,8 @@
+import pandas as pd
 import transfer_learning
 import multiple_instance_learning
 from include.nn_utils import Score
+from sklearn import metrics
 import argparse
 import sys
 from os.path import join
@@ -17,19 +19,18 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     
-    avg_f1, avg_roc = 0, 0
-    f1_list, roc_list = [], []
-    mean_score = Score(0, 0, 0, 0, 0, 0, 0, 0)._asdict()
-    mean_score_eyes = Score(0, 0, 0, 0, 0, 0, 0, 0)._asdict()
+    score_df = pd.DataFrame()
     for i in range(args.folds):
-        scores, score_eyes = transfer_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs) if args.strategy == 'CNN' else multiple_instance_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs)
-        mean_score = {k: mean_score[k] + v / args.folds for k, v in scores.items()}
-        mean_score_eyes = {k: mean_score_eyes[k] + v / args.folds for k, v in score_eyes.items()}
+        metric = transfer_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs) if args.strategy == 'CNN' else multiple_instance_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs)
+        score_df = pd.concat([score_df, metric.data]).reset_index(drop=True)
+    
+    mean_score = {
+            "f1": metrics.f1_score(score_df['label'].tolist(), score_df['prediction'].tolist()),
+            "roc": metrics.roc_auc_score(score_df['label'].tolist(), score_df['probability'].tolist()),
+            "pr": metrics.average_precision_score(score_df['label'].tolist(), score_df['probability'].tolist())
+    }
 
-    #std = math.sqrt(sum([(f - avg_f1)**2 / (len(f1_list)-1) for f in f1_list]))
-    print(f'Avg scores for the PAD dataset: {mean_score}')
-    print(f'Avg eye scores for the PAD dataset: {mean_score_eyes}')
-    #print('Standard divation for PAD dataset: ', std)
+    print(f'Avg scores for the PAD dataset (n={len(score_df)}): {mean_score}')
     sys.exit(0)
 
 

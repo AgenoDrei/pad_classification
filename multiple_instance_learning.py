@@ -53,9 +53,9 @@ def run(base_path, model_path, num_epochs, custom_hp = None):
 
     desc = f'_mil_pad_{str("_".join([k[0] + str(hp) for k, hp in hp.items()]))}_{os.path.basename(base_path)}'
     writer = SummaryWriter(comment=desc)
-    best_model, scores, eye_scores = train_model(net, criterion, optimizer_ft, plateau_scheduler, loaders, device,
+    best_model, perf_metric = train_model(net, criterion, optimizer_ft, plateau_scheduler, loaders, device,
                                                  writer, num_epochs=num_epochs)
-    return scores, eye_scores
+    return perf_metric
 
 
 def setup_log(data_path):
@@ -120,7 +120,8 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
         train_scores = metrics.calc_scores(as_dict=True)
         train_scores['loss'] = running_loss / len(loaders[0].dataset)
         write_scores(writer, 'train', train_scores, epoch)
-        val_loss, val_scores, val_eye_scores = validate(model, criterion, loaders[1], device, writer, epoch)
+        val_loss, perf_metrics = validate(model, criterion, loaders[1], device, writer, epoch)
+        val_scores = perf_metrics.calc_scores(as_dict=True)
 
         best_f1_val = val_scores['f1'] if val_scores['f1'] > best_f1_val else best_f1_val
 
@@ -130,7 +131,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
     print(f'{time.strftime("%H:%M:%S")}> Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
 
     torch.save(model.state_dict(), join(RES_PATH, f'model_pad_mil.pth'))
-    return model, val_scores, val_eye_scores
+    return model, perf_metrics
 
 
 def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False) -> Tuple[float, dict, dict]:
@@ -158,7 +159,7 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
     write_scores(writer, 'val', scores, cur_epoch, full_report=True)
     perf_metrics.data.to_csv(join(RES_PATH, f'{cur_epoch}_last_pad_model_{scores["f1"]:0.3}.csv'), index=False)
 
-    return running_loss / len(loader.dataset), scores, scores_eye#Score(0, 0, 0, 0, 0, 0, 0, 0)._asdict()
+    return running_loss / len(loader.dataset), perf_metrics
 
 
 if __name__ == '__main__':
