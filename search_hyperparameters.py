@@ -8,42 +8,49 @@ import argparse
 import sys
 from pprint import pprint as pp
 from os.path import join
-import math
+import time
+import os
 
 
 CONFIG_PATH = 'config_hyperparameter_search.toml'
 NUM_PERMUTATIONS = 40
 
 
-def run(data_path, model_path, num_epochs, strategy, mode='random'):
+def run(data_path, model_path, num_epochs, strategy, mode='random', num_results=5):
     results = []
     config = toml.load(CONFIG_PATH)
     hp_space = config['hp']
     hp_permutations = get_hyperparameter_permutations(hp_space, mode)
 
-    for hp in hp_permutations:
-        scores, score_eyes = None, None
-        if strategy == 'CNN':
-            scores, score_eyes = transfer_learning.run(data_path, model_path, num_epochs)
-        elif strategy == 'MIL':
-            scores, score_eyes = multiple_instance_learning.run(data_path, model_path, num_epochs, custom_hp=hp)
-        else:
-            raise  Exception('Unknown learning strategy')
+    working_path = f'{time.strftime("%Y%m%d_%H%M")}_pad_hp_search/'
+    os.mkdir(working_path)
 
-        results.append((hp, scores, score_eyes))
+    for hp in hp_permutations:
+        metric = None
+        if strategy == 'CNN':
+            metric = transfer_learning.run(data_path, model_path, num_epochs)
+        elif strategy == 'MIL':
+            metric = multiple_instance_learning.run(data_path, model_path, num_epochs, custom_hp=hp)
+        else:
+            raise Exception('Unknown learning strategy')
+
+        results.append((hp, metric.calc_scores(as_dict=True), metric.calc_scores_eye(as_dict=True)))
         print('Results for the hyperparameter permuation: ')
         pp(hp)
         print('Scores: ')
-        pp(scores)
+        pp(metric.calc_scores(as_dict=True))
         print('Eye-Scores: ')
-        pp(score_eyes)
+        pp(metric.calc_scores_eye(as_dict=True))
         print('--------------------------')
 
     results = sorted(results, key=lambda d: d[1]['roc'], reverse=True)
     print('############ TOP 5 ############')
-    for r in results[:5]:
-        pp(r[0])
-        print(f'Score, roc: {r[1]["roc"]}, f1: {r[1]["f1"]}, pr_auc: {r[1]["pr"]}')
+    with open('hp_search_results.txt', 'a') as out:
+        for r in results[:num_results]:
+            pp(r[0])
+            print(f'Score, roc: {r[1]["roc"]}, f1: {r[1]["f1"]}, pr_auc: {r[1]["pr"]}')
+            pp(r[0], stream=out)
+            print(f'Score, roc: {r[1]["roc"]}, f1: {r[1]["f1"]}, pr_auc: {r[1]["pr"]}', file=out)
 
 
 def get_hyperparameter_permutations(hp_space, mode):

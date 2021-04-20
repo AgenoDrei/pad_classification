@@ -60,7 +60,7 @@ def run(base_path, model_path, num_epochs, custom_hp = None):
 
 def setup_log(data_path):
     global RES_PATH
-    RES_PATH = f'{time.strftime("%Y%m%d_%H%M")}_{os.path.basename(data_path)}_PAD/'
+    RES_PATH = os.path.join(RES_PATH, f'{time.strftime("%Y%m%d_%H%M")}_{os.path.basename(data_path)}_PAD/')
     os.mkdir(RES_PATH)
 
 
@@ -82,7 +82,7 @@ def prepare_model(model_path, hp, device):
 
     if hp['pretraining'] and hp['model_loading'] == 'extract':
         net.load_state_dict(torch.load(model_path, map_location=device), strict=False)
-        net2 = BagNet(net.stump, num_attention_neurons=hp['attention_neurons'], attention_strategy=hp['attention'],
+        net = BagNet(net.stump, num_attention_neurons=hp['attention_neurons'], attention_strategy=hp['attention'],
                                  pooling_strategy=hp['pooling'], stump_type=hp['network'])
 
     print(f'Model info: {net.__class__.__name__}, #frozen layer: {hp["freeze"]}')
@@ -94,6 +94,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
     best_f1_val = -1
     model.to(device)
     val_scores, val_eye_scores = {}, {}
+    perf_metrics = None
 
     for epoch in range(num_epochs):
         print(f'{time.strftime("%H:%M:%S")}> Epoch {epoch}/{num_epochs}')
@@ -134,7 +135,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
     return model, perf_metrics
 
 
-def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False) -> Tuple[float, dict, dict]:
+def validate(model, criterion, loader, device, writer, cur_epoch):
     model.eval()
     running_loss = 0.0
     perf_metrics = Scores()
@@ -158,6 +159,7 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
     write_scores(writer, 'eye_val', scores_eye, cur_epoch, full_report=True)
     write_scores(writer, 'val', scores, cur_epoch, full_report=True)
     perf_metrics.data.to_csv(join(RES_PATH, f'{cur_epoch}_last_pad_model_{scores["f1"]:0.3}.csv'), index=False)
+    perf_metrics.data.to_csv(join(RES_PATH, f'latest_pad_results.csv'), index=False)
 
     return running_loss / len(loader.dataset), perf_metrics
 

@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import transfer_learning
 import multiple_instance_learning
@@ -6,7 +8,7 @@ from sklearn import metrics
 import argparse
 import sys
 from os.path import join
-import math
+import time
 
 
 if __name__ == '__main__':
@@ -18,10 +20,19 @@ if __name__ == '__main__':
     parser.add_argument('--strategy', '-s', help='MIL/CNN', type=str, default='CNN')
 
     args = parser.parse_args()
+
+    working_path = f'{time.strftime("%Y%m%d_%H%M")}_pad_kfolds/'
+    os.mkdir(working_path)
     
     score_df = pd.DataFrame()
     for i in range(args.folds):
-        metric = transfer_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs) if args.strategy == 'CNN' else multiple_instance_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs)
+        metric = None
+        if args.strategy == 'CNN':
+            metric = transfer_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs)
+        elif args.strategy == 'MIL':
+            multiple_instance_learning.RES_PATH = working_path
+            metric = multiple_instance_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs)
+
         score_df = pd.concat([score_df, metric.data]).reset_index(drop=True)
     
     mean_score = {
