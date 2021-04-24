@@ -11,21 +11,21 @@ import torch.optim as optim
 from torch import nn
 from torch.nn import CrossEntropyLoss, Linear
 from torch.optim import lr_scheduler
-from torch.utils.tensorboard import SummaryWriter
 from torchvision import models
 from tqdm import tqdm
 from include.nn_datasets import get_validation_pipeline, get_training_pipeline, \
     RetinaBagDataset, get_dataset
 from include.nn_models import BagNet
-from include.nn_utils import Scores, write_scores, Score
+from include.nn_report import Reporting
+from include.nn_metrics import Score, Scores
 
 RES_PATH = ''
 
 
-def run(base_path, model_path, num_epochs, custom_hp = None):
+def run(base_path, model_path, num_epochs, custom_hp=None, custom_writer=None):
     setup_log(base_path)
     config = toml.load('config_mil.toml')
-    hp = custom_hp if custom_hp else config['hp'] 
+    hp = custom_hp if custom_hp else config['hp']
     hp['pretraining'] = True if model_path else False
     print('--------Configuration---------- \n ', config)
     shutil.copy2('config_mil.toml', RES_PATH)
@@ -34,7 +34,8 @@ def run(base_path, model_path, num_epochs, custom_hp = None):
     print(f'Working on {base_path}!')
     print(f'using device {device}')
 
-    aug_pipeline_train = get_training_pipeline(0, hp['crop_size'], mode='mil', strength=hp['aug_strength'], graham=hp['graham'])
+    aug_pipeline_train = get_training_pipeline(0, hp['crop_size'], mode='mil', strength=hp['aug_strength'],
+                                               graham=hp['graham'])
     aug_pipeline_val = get_validation_pipeline(0, hp['crop_size'], mode='mil')
 
     loaders = get_dataset(RetinaBagDataset, base_path, hp, aug_pipeline_train, aug_pipeline_val, config['num_workers'])
@@ -52,9 +53,9 @@ def run(base_path, model_path, num_epochs, custom_hp = None):
     plateau_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, mode='min', factor=0.1, patience=12, verbose=True)
 
     desc = f'_mil_pad_{str("_".join([k[0] + str(hp) for k, hp in hp.items()]))}_{os.path.basename(base_path)}'
-    writer = SummaryWriter(comment=desc)
+    writer = Reporting(writer_desc=desc, log_dir=RES_PATH) if custom_writer is None else custom_writer
     best_model, perf_metric = train_model(net, criterion, optimizer_ft, plateau_scheduler, loaders, device,
-                                                 writer, num_epochs=num_epochs)
+                                          writer, num_epochs=num_epochs)
     return perf_metric
 
 
@@ -83,7 +84,7 @@ def prepare_model(model_path, hp, device):
     if hp['pretraining'] and hp['model_loading'] == 'extract':
         net.load_state_dict(torch.load(model_path, map_location=device), strict=False)
         net = BagNet(net.stump, num_attention_neurons=hp['attention_neurons'], attention_strategy=hp['attention'],
-                                 pooling_strategy=hp['pooling'], stump_type=hp['network'])
+                     pooling_strategy=hp['pooling'], stump_type=hp['network'])
 
     print(f'Model info: {net.__class__.__name__}, #frozen layer: {hp["freeze"]}')
     return net.to(device)
@@ -120,7 +121,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
 
         train_scores = metrics.calc_scores(as_dict=True)
         train_scores['loss'] = running_loss / len(loaders[0].dataset)
-        write_scores(writer, 'train', train_scores, epoch)
+        writer.write_scores(writer, 'train', train_scores, epoch)
         val_loss, perf_metrics = validate(model, criterion, loaders[1], device, writer, epoch)
         val_scores = perf_metrics.calc_scores(as_dict=True)
 
@@ -144,7 +145,7 @@ def validate(model, criterion, loader, device, writer, cur_epoch):
         inputs = batch['frames'].to(device, dtype=torch.float)
         labels = batch['label'].to(device)
         names = batch['pid']
-        #positions = batch['pos']
+        # positions = batch['pos']
 
         with torch.no_grad():
             loss, attention_weights, probs = model.calculate_objective(inputs, labels)
@@ -156,10 +157,9 @@ def validate(model, criterion, loader, device, writer, cur_epoch):
     scores = perf_metrics.calc_scores(as_dict=True)
     scores['loss'] = running_loss / len(loader.dataset)
     scores_eye = perf_metrics.calc_scores_eye(as_dict=True, ratio=0.5)
-    write_scores(writer, 'eye_val', scores_eye, cur_epoch, full_report=True)
-    write_scores(writer, 'val', scores, cur_epoch, full_report=True)
-    perf_metrics.data.to_csv(join(RES_PATH, f'{cur_epoch}_last_pad_model_{scores["f1"]:0.3}.csv'), index=False)
-    perf_metrics.data.to_csv(join(RES_PATH, f'latest_pad_results.csv'), index=False)
+    writer.write_scores(writer, 'eye_val', scores_eye, cur_epoch)
+    writer.write_scores(writer, 'val', scores, cur_epoch)
+    perf_metrics.persist_scores(RES_PATH, cur_epoch, scores)
 
     return running_loss / len(loader.dataset), perf_metrics
 

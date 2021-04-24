@@ -3,13 +3,14 @@ import os
 import pandas as pd
 import transfer_learning
 import multiple_instance_learning
-from include.nn_utils import Score
+from include.nn_metrics import Score
 from sklearn import metrics
 import argparse
 import sys
 from os.path import join
 import time
 
+from include.nn_report import Reporting
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PAD k-fold')
@@ -20,7 +21,6 @@ if __name__ == '__main__':
     parser.add_argument('--strategy', '-s', help='MIL/CNN', type=str, default='CNN')
 
     args = parser.parse_args()
-
     working_path = f'{time.strftime("%Y%m%d_%H%M")}_pad_kfolds/'
     os.mkdir(working_path)
     

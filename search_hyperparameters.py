@@ -3,7 +3,7 @@ import numpy as np
 import toml
 import transfer_learning
 import multiple_instance_learning
-from include.nn_utils import Score
+from include.nn_metrics import Score
 import argparse
 import sys
 from pprint import pprint as pp
