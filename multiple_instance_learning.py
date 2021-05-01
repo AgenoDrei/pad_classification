@@ -121,7 +121,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
 
         train_scores = metrics.calc_scores(as_dict=True)
         train_scores['loss'] = running_loss / len(loaders[0].dataset)
-        writer.write_scores(writer, 'train', train_scores, epoch)
+        writer.write_scores('train', train_scores, epoch)
         val_loss, perf_metrics = validate(model, criterion, loaders[1], device, writer, epoch)
         val_scores = perf_metrics.calc_scores(as_dict=True)
 
@@ -157,8 +157,8 @@ def validate(model, criterion, loader, device, writer, cur_epoch):
     scores = perf_metrics.calc_scores(as_dict=True)
     scores['loss'] = running_loss / len(loader.dataset)
     scores_eye = perf_metrics.calc_scores_eye(as_dict=True, ratio=0.5)
-    writer.write_scores(writer, 'eye_val', scores_eye, cur_epoch)
-    writer.write_scores(writer, 'val', scores, cur_epoch)
+    writer.write_scores('eye_val', scores_eye, cur_epoch)
+    writer.write_scores('val', scores, cur_epoch)
     perf_metrics.persist_scores(RES_PATH, cur_epoch, scores)
 
     return running_loss / len(loader.dataset), perf_metrics

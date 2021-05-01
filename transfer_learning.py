@@ -16,7 +16,8 @@ from tqdm import tqdm
 from typing import Tuple
 
 from include.nn_datasets import RetinaDataset, SegmentsDataset, get_validation_pipeline, get_training_pipeline
-from include.nn_utils import dfs_freeze, write_scores
+from include.nn_utils import dfs_freeze
+from include.nn_report import Reporting
 from include.nn_metrics import Scores
 
 RES_PATH = ''

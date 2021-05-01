@@ -38,13 +38,13 @@ class Reporting:
             self.writer.add_scalar(f'{tag}/accuracy', scores['accuracy'], cur_epoch)
 
         print_scores(scores, tag)
-        if self.history.get(tag):
+        if isinstance(self.history.get(tag), pd.DataFrame):
             line = {
                 self.history_cols[0]: cur_epoch,
                 self.history_cols[1]: scores['f1'],
                 self.history_cols[2]: scores['roc']
             }
-            self.history['tag'] = self.history['tag'].append(line, ignore_index=True)
+            self.history[tag] = self.history[tag].append(line, ignore_index=True)
 
     def write_hyperparameter(self, tag: str, hps: Dict):
         if self.history.get(tag) is None:
@@ -52,4 +52,5 @@ class Reporting:
         self.writer.add_hparams(hps, self.history[tag].tail(1).to_dict('records')[0])
 
     def __del__(self):
-        self.writer.close()
+        # self.writer.close()
+        pass

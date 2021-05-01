@@ -9,8 +9,8 @@ import argparse
 import sys
 from os.path import join
 import time
-
 from include.nn_report import Reporting
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PAD k-fold')
@@ -26,12 +26,13 @@ if __name__ == '__main__':
     
     score_df = pd.DataFrame()
     for i in range(args.folds):
+        writer = Reporting(log_dir=f'{working_path}fold{i}')
         metric = None
         if args.strategy == 'CNN':
             metric = transfer_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs)
         elif args.strategy == 'MIL':
             multiple_instance_learning.RES_PATH = working_path
-            metric = multiple_instance_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs)
+            metric = multiple_instance_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs, custom_writer=writer)
 
         score_df = pd.concat([score_df, metric.data]).reset_index(drop=True)
     

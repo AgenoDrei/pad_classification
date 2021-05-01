@@ -27,6 +27,8 @@ def run(data_path, model_path, num_epochs, strategy, mode='random', num_results=
 
     for hp in hp_permutations:
         metric = None
+        writer = Reporting(log_dir=f'{working_path}{str(hp)}')
+
         if strategy == 'CNN':
             metric = transfer_learning.run(data_path, model_path, num_epochs)
         elif strategy == 'MIL':
