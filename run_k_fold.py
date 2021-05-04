@@ -1,4 +1,5 @@
 import os
+from pprint import pp
 
 import pandas as pd
 import transfer_learning
@@ -29,7 +30,7 @@ if __name__ == '__main__':
         writer = Reporting(log_dir=f'{working_path}fold{i}')
         metric = None
         if args.strategy == 'CNN':
-            metric = transfer_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs)
+            metric = transfer_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs, custom_writer=writer)
         elif args.strategy == 'MIL':
             multiple_instance_learning.RES_PATH = working_path
             metric = multiple_instance_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs, custom_writer=writer)
@@ -43,6 +44,9 @@ if __name__ == '__main__':
     }
 
     print(f'Avg scores for the PAD dataset (n={len(score_df)}): {mean_score}')
+    with open('hp_search_results.txt', 'a') as out:
+        pp(mean_score, stream=out)
+
     sys.exit(0)
 
 

@@ -1,3 +1,4 @@
+import shutil
 from os.path import join
 import argparse
 import os
@@ -10,11 +11,8 @@ from pretrainedmodels import inceptionv4
 from torch.nn import CrossEntropyLoss, Linear
 from torch.optim import lr_scheduler
 from torch.utils.data import Dataset
-from torch.utils.tensorboard import SummaryWriter
 from torchvision import models
 from tqdm import tqdm
-from typing import Tuple
-
 from include.nn_datasets import RetinaDataset, SegmentsDataset, get_validation_pipeline, get_training_pipeline
 from include.nn_utils import dfs_freeze
 from include.nn_report import Reporting
@@ -23,13 +21,14 @@ from include.nn_metrics import Scores
 RES_PATH = ''
 
 
-def run(base_path, model_path, num_epochs):
+def run(base_path, model_path, num_epochs, custom_hp=None, custom_writer=None):
     setup_log(base_path)
     # load hyperparameter
     config = toml.load('config.toml')
-    hp = config['hp']
+    hp = custom_hp if custom_hp else config['hp']
     hp['pretraining'] = True if model_path else False
     print('--------Configuration---------- \n ', config)
+    shutil.copy2('config_mil.toml', RES_PATH)
 
     device = torch.device(config['gpu_name'] if torch.cuda.is_available() else "cpu")
     print(f'Working on {base_path}!')
@@ -48,15 +47,15 @@ def run(base_path, model_path, num_epochs):
     plateau_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, mode='min', factor=0.1, patience=5, verbose=True)
 
     desc = f'_transfer_pad_{str("_".join([k[0] + str(hp) for k, hp in hp.items()]))}'
-    writer = SummaryWriter(comment=desc)
-    best_model, scores, eye_scores = train_model(net, criterion, optimizer_ft, plateau_scheduler, loaders, device, writer,
+    writer = Reporting(writer_desc=desc, log_dir=RES_PATH) if custom_writer is None else custom_writer
+    best_model, perf_metric = train_model(net, criterion, optimizer_ft, plateau_scheduler, loaders, device, writer,
                                      num_epochs=num_epochs, description=desc)
-    return scores, eye_scores
+    return perf_metric
 
 
 def setup_log(data_path):
     global RES_PATH
-    RES_PATH = f'{time.strftime("%Y%m%d_%H%M")}_{os.path.basename(data_path)}_PAD/'
+    RES_PATH = os.path.join(RES_PATH, f'{time.strftime("%Y%m%d_%H%M")}_{os.path.basename(data_path)}_transfer_PAD/')
     os.mkdir(RES_PATH)
 
 
@@ -110,6 +109,7 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
     since = time.time()
     best_f1_val = -1
     model.to(device)
+    perf_metrics = None
 
     for epoch in range(num_epochs):
         print(f'{time.strftime("%H:%M:%S")}> Epoch {epoch}/{num_epochs}')
@@ -136,11 +136,11 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
 
         train_scores = metrics.calc_scores(as_dict=True)
         train_scores['loss'] = running_loss / len(loaders[0].dataset)
-        write_scores(writer, 'train', train_scores, epoch)
-        val_loss, val_scores, val_eye_scores = validate(model, criterion, loaders[1], device, writer, epoch)
+        writer.write_scores('train', train_scores, epoch)
+        val_loss, perf_metrics = validate(model, criterion, loaders[1], device, writer, epoch)
+        val_scores = perf_metrics.calc_scores(as_dict=True)
 
         best_f1_val = val_scores['f1'] if val_scores['f1'] > best_f1_val else best_f1_val
-
         scheduler.step(val_loss)
 
     time_elapsed = time.time() - since
@@ -150,10 +150,10 @@ def train_model(model, criterion, optimizer, scheduler, loaders, device, writer,
     # validate(model, criterion, loaders[1], device, writer, num_epochs, calc_roc=True)
     torch.save(model.state_dict(), join(RES_PATH, f'model_pad_transfer.pth'))
 
-    return model, val_scores, val_eye_scores
+    return model, perf_metrics
 
 
-def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False) -> Tuple[float, float]:
+def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False):
     model.eval()
     running_loss = 0.0
     perf_metrics = Scores()
@@ -176,11 +176,12 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
     scores = perf_metrics.calc_scores(as_dict=True)
     scores_eye = perf_metrics.calc_scores_eye(as_dict=True, ratio=0.5)
     scores['loss'] = running_loss / len(loader.dataset)
-    write_scores(writer, 'val', scores, cur_epoch, full_report=True)
-    write_scores(writer, 'eye_val', scores_eye, cur_epoch, full_report=True)
+    writer.write_scores('val', scores, cur_epoch, full_report=True)
+    writer.write_scores('eye_val', scores_eye, cur_epoch, full_report=True)
     perf_metrics.data.to_csv(join(RES_PATH, f'{cur_epoch}_last_pad_model_{scores["f1"]:0.3}.csv'), index=False)
+    perf_metrics.persist_scores(RES_PATH, cur_epoch, scores)
 
-    return running_loss / len(loader.dataset), scores, scores_eye
+    return running_loss / len(loader.dataset), perf_metrics
 
 
 if __name__ == '__main__':
