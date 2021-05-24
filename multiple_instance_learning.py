@@ -144,7 +144,7 @@ def validate(model, criterion, loader, device, writer, cur_epoch):
     for i, batch in tqdm(enumerate(loader), total=len(loader), desc='Validation'):
         inputs = batch['frames'].to(device, dtype=torch.float)
         labels = batch['label'].to(device)
-        names = batch['pid']
+        names = batch['name']   # pid for eye_id without L/R
         # positions = batch['pos']
 
         with torch.no_grad():
