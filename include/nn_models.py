@@ -109,11 +109,16 @@ class BagNet(nn.Module):
             return nn.Identity(), (256 * 11 * 11)
 
     def _get_attention_net(self, strategy='normal'):
-        att = nn.Sequential(
-            nn.Linear(self.L, self.D),
-            nn.Tanh(),
-            nn.Linear(self.D, self.K)
-        )
+        if strategy == 'normal':
+            att = nn.Sequential(
+                nn.Linear(self.L, self.D),
+                nn.Tanh(),
+                nn.Linear(self.D, self.K)
+            )
+        elif strategy == 'uniform':
+            att = torch.ones([self.D, self.K]) / self.D
+        else:
+            att = nn.Identity()
         att_v = nn.Sequential(
             nn.Linear(self.L, self.D),
             nn.Tanh()

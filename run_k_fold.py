@@ -1,5 +1,5 @@
 import os
-from pprint import pp
+from pprint import pprint as pp
 
 import pandas as pd
 import transfer_learning
@@ -30,6 +30,7 @@ if __name__ == '__main__':
         writer = Reporting(log_dir=f'{working_path}fold{i}')
         metric = None
         if args.strategy == 'CNN':
+            transfer_learning.RES_PATH = working_path
             metric = transfer_learning.run(join(args.data, f'fold{i}'), args.model, args.epochs, custom_writer=writer)
         elif args.strategy == 'MIL':
             multiple_instance_learning.RES_PATH = working_path
@@ -39,12 +40,15 @@ if __name__ == '__main__':
     
     mean_score = {
             "f1": metrics.f1_score(score_df['label'].tolist(), score_df['prediction'].tolist()),
+            "precision": metrics.precision_score(score_df['label'].tolist(), score_df['prediction'].tolist()),
+            "recall": metrics.recall_score(score_df['label'].tolist(), score_df['prediction'].tolist()),
+            "acc": metrics.accuracy_score(score_df['label'].tolist(), score_df['prediction'].tolist()),
             "roc": metrics.roc_auc_score(score_df['label'].tolist(), score_df['probability'].tolist()),
             "pr": metrics.average_precision_score(score_df['label'].tolist(), score_df['probability'].tolist())
     }
 
     print(f'Avg scores for the PAD dataset (n={len(score_df)}): {mean_score}')
-    with open('hp_search_results.txt', 'a') as out:
+    with open(os.path.join(working_path, 'kfold_results.txt'), 'a') as out:
         pp(mean_score, stream=out)
 
     sys.exit(0)

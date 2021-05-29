@@ -17,7 +17,8 @@ class Scores:
 
     def add(self, preds: torch.Tensor, labels: torch.Tensor, tags: list = None, probs: torch.Tensor = None,
             attention: torch.Tensor = None, pos: torch.Tensor = None):
-        if probs and probs.size(1) > 1:
+        #print(probs)
+        if probs != None and probs.size(1) > 1:
             probs[:, 0] = probs[:, 1]
         new_data = tags if tags is not None else ['train' for i in range(len(labels.tolist()))], \
                    labels.tolist(), \

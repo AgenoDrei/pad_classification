@@ -176,8 +176,8 @@ def validate(model, criterion, loader, device, writer, cur_epoch, calc_roc=False
     scores = perf_metrics.calc_scores(as_dict=True)
     scores_eye = perf_metrics.calc_scores_eye(as_dict=True, ratio=0.5)
     scores['loss'] = running_loss / len(loader.dataset)
-    writer.write_scores('val', scores, cur_epoch, full_report=True)
-    writer.write_scores('eye_val', scores_eye, cur_epoch, full_report=True)
+    writer.write_scores('val', scores, cur_epoch)
+    writer.write_scores('eye_val', scores_eye, cur_epoch)
     perf_metrics.data.to_csv(join(RES_PATH, f'{cur_epoch}_last_pad_model_{scores["f1"]:0.3}.csv'), index=False)
     perf_metrics.persist_scores(RES_PATH, cur_epoch, scores)
 
