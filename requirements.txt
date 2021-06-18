@@ -13,3 +13,6 @@ setuptools~=50.3.0
 tqdm~=4.51.0
 toml~=0.10.1
 pretrainedmodels~=0.7.4
+sklearn~=0.0
+scikit-learn~=0.23.2
+shapely~=1.7.1
