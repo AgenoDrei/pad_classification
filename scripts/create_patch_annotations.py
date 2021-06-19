@@ -11,9 +11,6 @@ from shapely.geometry import Polygon
 
 
 dataset = {}
-id2desc = {0: "sup. temporal artery", 1: "sup. temporal vein", 2: "sup. nasal artery", 3: "sup. nasal vein",
-           4: "inf. temporal artery", 5: "inf. temporal vein", 6: "inf. nasal artery", 7: "inf. nasal vein",
-           8: "macula", 9: "optic disc"}
 width, height = (9, 8)
 
 
@@ -84,6 +81,8 @@ def run(input_path, output_path, annotations):
 
     # print(dataset)
     # write_annotations(dataset[cur_file], output_path)
+
+    # Exporting annotations
     output_file = open(os.path.join(output_path, 'output.pkl'), 'wb')
     pickle.dump(dataset, output_file)
     output_file_json = open(os.path.join(output_path, 'output.json'), 'w')
