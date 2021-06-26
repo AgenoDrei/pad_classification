@@ -2,15 +2,12 @@ import os
 import cv2
 import click
 import pickle
+import itertools
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from scipy.stats import wilcoxon, mannwhitneyu
 from tqdm import tqdm
-
-
-id2desc = {0: "sup. temporal artery", 1: "sup. temporal vein", 2: "sup. nasal artery", 3: "sup. nasal vein",
-           4: "inf. temporal artery", 5: "inf. temporal vein", 6: "inf. nasal artery", 7: "inf. nasal vein",
-           8: "macula", 9: "optic disc"}
 
 
 def fix_zero_att_weights(weights, annotations, cur_img_id, data_path, segment_size=399, black_th=0.5):
@@ -24,24 +21,28 @@ def fix_zero_att_weights(weights, annotations, cur_img_id, data_path, segment_si
                 continue
             count_non_black_px = cv2.countNonZero(cv2.cvtColor(segment, cv2.COLOR_BGR2GRAY))
             if count_non_black_px / segment_size ** 2 < black_th:
-                #weights = np.insert(weights, seg_count, 0.0)
-                #annotations = np.delete(annotations, seg_count)
+                # weights = np.insert(weights, seg_count, 0.0)
+                # annotations = np.delete(annotations, seg_count)
                 del annotations[seg_count]
                 seg_count -= 1
             seg_count += 1
     return annotations
 
 
-def enrich_annotations(annotations, df, data):
+def enrich_annotations(annotations, df, data, combine=False):
     for i, row in tqdm(df.iterrows(), total=len(df), desc='Enrich annotations'):
         filename = row['eye_id'] + '.jpg'
         sample_patches = annotations[filename]
         weights = eval(row['attention'])
+        weights = [w * len(weights) for w in weights]
         annotations[filename] = fix_zero_att_weights(weights, sample_patches, filename, data)
         # print(len(sample_patches), len(weights))
 
         for j in range(len(weights)):
             sample_patches[j]['weight'] = weights[j]
+            if combine:
+                sample_patches[j]['visible_classes'] = \
+                    [x - 1 if x == 1 or x == 3 or x == 5 or x == 7 else x for x in sample_patches[j]['visible_classes']]
     return annotations
 
 
@@ -59,24 +60,87 @@ def create_groups(anno, group_idx=0):
     return test_group, control_group
 
 
+def plot_groups(test_group, control_group, path='tmp/output.png'):
+    fig = plt.figure(figsize=(10, 7))
+    # ax = fig.add_axes([0, 0, 1, 1])
+    bp = plt.boxplot([test_group, control_group], showfliers=False)
+    plt.xticks([1, 2], ['test', 'control'])
+    plt.savefig(path)
+    plt.close(fig)
+
+
+def create_overlap_matrix(annotations, id2desc, path='/tmp/'):
+    trans = {0: 0, 2: 1, 4: 2, 6: 3, 8: 4, 9: 5}
+    ol_mat = np.zeros((len(id2desc.values()), len(id2desc.values())))
+    for sample in annotations.values():
+        for cell in sample:
+            classes = cell['visible_classes']
+            if len(classes) == 1:
+                if len(id2desc.values()) == 6:
+                    ol_mat[trans[classes[0]], trans[classes[0]]] += 1
+                else:
+                    ol_mat[classes[0], classes[0]] += 1
+            elif len(classes) > 1:
+                for a, b in list(itertools.product(classes, classes)):
+                    print()
+                    #if a == b:
+                    #    continue
+                    if len(id2desc.values()) == 6:
+                        ol_mat[trans[a], trans[b]] += 1
+                        ol_mat[trans[b], trans[a]] += 1
+                    else:
+                        ol_mat[a, b] += 1
+                        ol_mat[b, a] += 1
+
+
+    fig = plt.figure(figsize=(10, 7))
+    plt.yticks(list(range(0, len(id2desc.values()))), id2desc.values())
+    plt.xticks(list(range(0, len(id2desc.values()))), [t[:4] for t in id2desc.values()])
+    plt.imshow(ol_mat)
+    plt.colorbar()
+    plt.savefig(path + 'overlap.png')
+    # Normalization along rows
+    diag = np.diagonal(ol_mat)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ol_mat = np.nan_to_num(np.true_divide(ol_mat, diag[:, None]))
+    fig = plt.figure(figsize=(10, 7))
+    plt.yticks(list(range(0, len(id2desc.values()))), id2desc.values())
+    plt.xticks(list(range(0, len(id2desc.values()))), [t[:4] for t in id2desc.values()])
+    plt.imshow(ol_mat)
+    plt.colorbar()
+    plt.savefig(path + 'overlap_norm.png')
+    plt.close(fig)
+    return ol_mat
+
+
 @click.command()
 @click.option('--attention_weights', '-w', help='Path to MIL results containing weights for images')
 @click.option('--annotations', '-a', help='Path to VIA annotation file')
 @click.option('--data', '-d', help='Path to the image dataset folder')
-def run(attention_weights, annotations, data):
+@click.option('--combine/--separate', help='Combine vessels into one class', default=False)
+def run(attention_weights, annotations, data, combine=False):
     df = pd.read_csv(attention_weights)
 
     file = open(annotations, 'rb')
     anno = pickle.load(file)
     file.close()
 
-    anno = enrich_annotations(anno, df, data)
-    #print(anno["HA1044L.jpg"])
+    id2desc = {0: "sup. temporal arcade", 2: "sup. nasal arcade", 4: "inf. temporal arcade", 6: "inf. nasal arcade",
+               8: "macula", 9: "optic disc"} if combine else {0: "sup. temporal artery", 1: "sup. temporal vein",
+                                                              2: "sup. nasal artery", 3: "sup. nasal vein",
+                                                              4: "inf. temporal artery", 5: "inf. temporal vein",
+                                                              6: "inf. nasal artery", 7: "inf. nasal vein",
+                                                              8: "macula", 9: "optic disc"}
+    anno = enrich_annotations(anno, df, data, combine=combine)
+    overlap = create_overlap_matrix(anno, id2desc)
 
-    for i in range(0, 10):
+    for i in id2desc.keys():
         test_group, control_group = create_groups(anno, group_idx=i)
-        stat, p = mannwhitneyu(np.array(test_group), np.array(control_group), alternative='greater')
-        print(f'P-value for U-test for class {id2desc[i]}: {p} [{len(test_group)}/{len(control_group)}]')
+        stat, p = mannwhitneyu(np.array(test_group), np.array(control_group))  # , alternative='greater')
+        print(f'P-value for U-test for class {id2desc[i]}: {p:.4E} [{len(test_group)}/{len(control_group)}]')
+        print(f'Median (std): {np.median(test_group):.4f} ({np.std(test_group):.4f}) / '
+              f'{np.median(control_group):.4f} ({np.std(control_group):.4f})')
+        plot_groups(test_group, control_group, path=f"/tmp/{id2desc[i]}.png")
 
 
 if __name__ == '__main__':
