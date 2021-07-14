@@ -28,7 +28,7 @@ def create_patches(patch_size, rows, columns):
     return patches
 
 
-def process_annotation(file_name, region, annotation):
+def process_annotation(file_name, region, annotation, circle_shrink=1.5):
     entry = dataset.get(file_name)
     structure = None
     if not entry:
@@ -36,10 +36,10 @@ def process_annotation(file_name, region, annotation):
         entry = dataset[file_name]
     if region["name"] == 'circle':
         print('Circle annotation detected')
-        lt = (region["cx"] - region["r"]//2.5, region["cy"] - region["r"]//2.5)
-        lb = (region["cx"] - region["r"]//2.5, region["cy"] + region["r"]//2.5)
-        rt = (region["cx"] + region["r"]//2.5, region["cy"] - region["r"]//2.5)
-        rb = (region["cx"] - region["r"]//2.5, region["cy"] + region["r"]//2.5)
+        lt = (region["cx"] - region["r"]//circle_shrink, region["cy"] - region["r"]//circle_shrink)
+        lb = (region["cx"] - region["r"]//circle_shrink, region["cy"] + region["r"]//circle_shrink)
+        rt = (region["cx"] + region["r"]//circle_shrink, region["cy"] - region["r"]//circle_shrink)
+        rb = (region["cx"] - region["r"]//circle_shrink, region["cy"] + region["r"]//circle_shrink)
         structure = Polygon([lt, rt, rb, lb])
     elif region["name"] == 'polygon':
         print('Polygon annotation detected')

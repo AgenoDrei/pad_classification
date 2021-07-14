@@ -7,7 +7,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import friedmanchisquare, mannwhitneyu, wilcoxon
+from scikit_posthocs import posthoc_nemenyi_friedman
 from tqdm import tqdm
+
+from include.plotting import plot_groups, plot_cooccurence_mat, boxplot_groups
 
 
 def fix_zero_att_weights(weights, annotations, cur_img_id, data_path, segment_size=399, black_th=0.5):
@@ -30,10 +33,9 @@ def fix_zero_att_weights(weights, annotations, cur_img_id, data_path, segment_si
 
 
 def enrich_annotations(annotations, df, data, combine=False):
-    if os.path.exists('/tmp/annos.pkl'):
-        file = open('/tmp/annos.pkl', 'rb')
+    if os.path.exists(f'/tmp/annos{6 if combine else 10}.pkl'):
+        file = open(f'/tmp/annos{6 if combine else 10}.pkl', 'rb')
         anno = pickle.load(file)
-        file.close()
         return anno
 
     for i, row in tqdm(df.iterrows(), total=len(df), desc='Enrich annotations'):
@@ -50,13 +52,13 @@ def enrich_annotations(annotations, df, data, combine=False):
                 sample_patches[j]['visible_classes'] = \
                     [x - 1 if x == 1 or x == 3 or x == 5 or x == 7 else x for x in sample_patches[j]['visible_classes']]
 
-    output_file = open('/tmp/annos.pkl', 'wb')
+    output_file = open(f'/tmp/annos{6 if combine else 10}.pkl', 'wb')
     pickle.dump(annotations, output_file)
     output_file.close()
     return annotations
 
 
-def create_groups(anno, group_idx=0, only_empty=False):
+def create_groups(anno, group_idx=0, only_empty=True):
     test_group = []
     control_group = []
 
@@ -72,6 +74,32 @@ def create_groups(anno, group_idx=0, only_empty=False):
                     control_group.append(cell['weight'])
 
     return test_group, control_group
+
+
+def create_vessel_groups(anno):
+    artery_group, vein_group = [], []
+    artery_ids, vein_ids = [0, 4, 2, 6][:], [1, 5, 3, 7][:]
+    for sample in anno.values():
+        w_agg = {'artery': [0.0, 0], 'vein': [0.0, 0]}
+        # w_agg = {'artery': [], 'vein': []}
+        for cell in sample:
+            if len(cell['visible_classes']) > 1:
+                continue
+            for aid in artery_ids:
+                if aid in cell['visible_classes']:
+                    # w_agg['artery'].append(cell['weight'])
+                    w_agg['artery'][0] += cell['weight']
+                    w_agg['artery'][1] += 1
+            for vid in vein_ids:
+                if vid in cell['visible_classes']:
+                    # w_agg['vein'].append(cell['weight'])
+                    w_agg['vein'][0] += cell['weight']
+                    w_agg['vein'][1] += 1
+        artery_group.append(w_agg['artery'][0] / (w_agg['artery'][1] + 10e-100)) # artery_group.append(np.median(w_agg['artery']))
+        vein_group.append(w_agg['vein'][0] / (w_agg['vein'][1] + 10e-100)) # vein_group.append(np.median(w_agg['vein']))
+    print(f'Arteries mean (std): {np.mean(artery_group):.4f} ({np.std(artery_group):.4f})')
+    print(f'Veins mean (std): {np.median(vein_group):.4f} ({np.std(vein_group):.4f})')
+    return artery_group, vein_group
 
 
 def create_pooled_groups(anno, id2desc):
@@ -93,57 +121,68 @@ def create_pooled_groups(anno, id2desc):
     return groups
 
 
-def plot_groups(test_group, control_group, path='tmp/output.png'):
-    fig = plt.figure(figsize=(10, 7))
-    # ax = fig.add_axes([0, 0, 1, 1])
-    bp = plt.boxplot([test_group, control_group], showfliers=False)
-    plt.xticks([1, 2], ['test', 'control'])
-    plt.savefig(path)
-    plt.close(fig)
-
-
 def create_overlap_matrix(annotations, id2desc, path='/tmp/', normalize=False):
     trans = {0: 0, 2: 1, 4: 2, 6: 3, 8: 4, 9: 5}
     ol_mat = np.zeros((len(id2desc.values()), len(id2desc.values())))
     for sample in annotations.values():
         for cell in sample:
             classes = cell['visible_classes']
-            if len(classes) == 1:
-                if len(id2desc.values()) == 6:
+            if len(classes) == 1:  # if the patch shows only ONE class
+                if len(id2desc.values()) == 6:  # if artery / vein classes are combined
                     ol_mat[trans[classes[0]], trans[classes[0]]] += 1
                 else:
                     ol_mat[classes[0], classes[0]] += 1
-            elif len(classes) > 1:
-                for a, b in list(itertools.product(classes, classes)):
-                    print()
-                    #if a == b:
-                    #    continue
+            elif len(classes) > 1:  # more than 1 class
+                classes = sorted(list(set(classes)))
+                for a in classes:
+                    if len(id2desc.values()) == 6:
+                        ol_mat[trans[a], trans[a]] += 1
+                    else:
+                        ol_mat[a, a] += 1
+                for a, b in list(itertools.combinations(classes, 2)):
                     if len(id2desc.values()) == 6:
                         ol_mat[trans[a], trans[b]] += 1
-                        ol_mat[trans[b], trans[a]] += 1
                     else:
                         ol_mat[a, b] += 1
-                        ol_mat[b, a] += 1
-    # Normalization along rows
+
     if normalize:
         diag = np.diagonal(ol_mat)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            ol_mat = np.nan_to_num(np.true_divide(ol_mat, diag[:, None]))
-    fig = plt.figure(figsize=(10, 7))
-    plt.yticks(list(range(0, len(id2desc.values()))), id2desc.values())
-    plt.xticks(list(range(0, len(id2desc.values()))), [t[:4] for t in id2desc.values()])
-    plt.imshow(ol_mat)
-    plt.colorbar()
-    plt.savefig(path + 'overlap_norm.png')
-    plt.close(fig)
+        row_sums = ol_mat.sum(axis=1, keepdims=True)
+        ol_mat = ol_mat / diag
+
+    ol_mat = ol_mat + ol_mat.T - np.diag(ol_mat.diagonal())
+    plot_cooccurence_mat(ol_mat, id2desc, out_path=path)
     return ol_mat
+
+
+def create_groupsize_plots(anno, id2desc):
+    id2desc[10] = 'no_class'
+    groups = {k: [] for k in id2desc.keys()}
+    for eye in anno.values():
+        count = {k: 0 for k in id2desc.keys()}
+        for cell in eye:
+            if len(cell['visible_classes']) == 0:
+                count[10] += 1
+            for v in cell['visible_classes']:
+                count[v] += 1
+        for k in groups.keys():
+            groups[k].append(count[k])
+    boxplot_groups(groups, id2desc)
+    return groups
+
+
+def create_weight_by_class_plots(anno, id2desc):
+    groups = [create_groups(anno, gid, only_empty=True)[0] for gid in id2desc.keys()][:10]
+    groups.append(create_groups(anno, 0, only_empty=True)[1])
+    boxplot_groups(groups, id2desc, path='/tmp/weight_by_class_boxplot.png', show_outliers=False)
 
 
 @click.command()
 @click.option('--attention_weights', '-w', help='Path to MIL results containing weights for images')
 @click.option('--annotations', '-a', help='Path to VIA annotation file')
 @click.option('--data', '-d', help='Path to the image dataset folder')
-@click.option('--test', help='Type of statistical test used (u-test / friedman-test / wilcoxon-test)', default='u-test')
+@click.option('--test', help='Type of statistical test used (u-test / friedman-test / wilcoxon-test / nemenyi-test)',
+              default='u-test')
 @click.option('--combine/--separate', help='Combine vessels into one class', default=False)
 @click.option('--normalize/--count', help='Normalize co-occurence', default=False)
 def run(attention_weights, annotations, data, test='u-test', combine=False, normalize=False):
@@ -153,37 +192,48 @@ def run(attention_weights, annotations, data, test='u-test', combine=False, norm
     anno = pickle.load(file)
     file.close()
 
-    id2desc = {0: "sup. temporal arcade", 2: "sup. nasal arcade", 4: "inf. temporal arcade", 6: "inf. nasal arcade",
-               8: "macula", 9: "optic disc"} if combine else {0: "sup. temporal artery", 1: "sup. temporal vein",
-                                                              2: "sup. nasal artery", 3: "sup. nasal vein",
-                                                              4: "inf. temporal artery", 5: "inf. temporal vein",
-                                                              6: "inf. nasal artery", 7: "inf. nasal vein",
-                                                              8: "macula", 9: "optic disc"}
+    id2desc = {0: "STA", 2: "SNA", 4: "ITA", 6: "INA", 8: "MAC", 9: "OD"} if combine \
+        else {0: "STA", 1: "STV", 2: "SNA", 3: "SNV", 4: "ITA", 5: "ITV", 6: "INA", 7: "INV", 8: "MAC", 9: "OD"}
     anno = enrich_annotations(anno, df, data, combine=combine)
-    overlap = create_overlap_matrix(anno, id2desc, normalize=normalize)
+    create_overlap_matrix(anno, id2desc, normalize=normalize)
+    create_groupsize_plots(anno, id2desc)
+    create_weight_by_class_plots(anno, id2desc)
 
     if test == 'u-test':
         for i in id2desc.keys():
+            if i == 10:
+                continue
             test_group, control_group = create_groups(anno, group_idx=i)
             stat, p = mannwhitneyu(np.array(test_group), np.array(control_group))  # , alternative='greater')
             print(f'P-value for U-test for class {id2desc[i]}: {p:.4E} [{len(test_group)}/{len(control_group)}]')
             print(f'Median (std): {np.median(test_group):.4f} ({np.std(test_group):.4f}) / '
                   f'{np.median(control_group):.4f} ({np.std(control_group):.4f})')
-            plot_groups(test_group, control_group, path=f"/tmp/{id2desc[i]}.png")
     elif test == 'friedman-test':
         groups = create_pooled_groups(anno, id2desc)
         groups = list(groups.values())
-        stat, p = friedmanchisquare(*groups)
+        stat, p = friedmanchisquare(*groups[:-1])
         print(f'Test statistic and p-value for Friedmann test: {stat}, {p:.4E}, len: {[len(g) for g in groups]}')
     elif test == 'wilcoxon-test':
         groups = create_pooled_groups(anno, id2desc)
-        for id in id2desc.keys():
-            if id == 10:
+        for cls_id in id2desc.keys():
+            if cls_id == 10:
                 continue
-            test_group = np.array(groups[id])
-            control_group = np.array(groups[10])#np.average(np.array([v for k, v in groups.items() if k != id]), axis=0)
+            test_group = np.array(groups[cls_id])
+            control_group = np.array(groups[
+                                         10])  # np.average(np.array([v for k, v in groups.items() if k != id]), axis=0)  # np.array(groups[10])
             stat, p = wilcoxon(test_group, control_group)  # , alternative='greater')
-            print(f'P-value for U-test for class {id2desc[id]}: {p:.4E} [{len(test_group)}/{len(control_group)}]')
+            print(
+                f'P-value for wilcoxon-test for class {id2desc[cls_id]}: {p:.4E} [{len(test_group)}/{len(control_group)}]')
+    elif test == 'vessel-test':
+        artery_group, vein_group = create_vessel_groups(anno)
+        stat, p = wilcoxon(np.array(artery_group), np.array(vein_group), alternative='less')
+        print(f'P-value for wilcoxon-test for vessel types: {p:.4E}, stat: {stat}')
+    elif test == 'nemenyi-test':
+        groups = create_pooled_groups(anno, id2desc)
+        print(groups)
+        groups = list(groups.values())
+        stat = posthoc_nemenyi_friedman(np.array(groups).T)
+        print(stat)
 
 
 if __name__ == '__main__':
