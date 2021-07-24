@@ -5,7 +5,7 @@ import shutil
 import os.path as osp
 
 
-INTER_MODE = cv2.INTER_NEAREST
+INTER_MODE = cv2.INTER_CUBIC
 
 
 @click.command()
