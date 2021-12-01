@@ -1,0 +1,14 @@
+gpu_name = "cuda:0"
+num_workers = 28
+eye_segments = 1
+
+[hp]
+batch_size = 2
+learning_rate = 0.0001
+weight_decay = 0.001
+optimizer = "Adam"
+network = "EfficientNet"
+image_size = 700
+crop_size = 600
+freeze = 0.0
+class_threshold = 1

@@ -24,7 +24,7 @@ RES_PATH = ''
 def run(base_path, model_path, num_epochs, custom_hp=None, custom_writer=None):
     setup_log(base_path)
     # load hyperparameter
-    config = toml.load('config.toml')
+    config = toml.load('config_transfer.toml')
     hp = custom_hp if custom_hp else config['hp']
     hp['pretraining'] = True if model_path else False
     print('--------Configuration---------- \n ', config)
@@ -63,6 +63,10 @@ def prepare_model(model_path, hp, device):
     net = None
     if hp['network'] == 'AlexNet':
         net = models.alexnet(pretrained=True)
+        num_ftrs = net.classifier[-1].in_features
+        net.classifier[-1] = Linear(num_ftrs, 2)
+    elif hp['network'] == 'EfficientNet':
+        net = models.efficientnet_b7(pretrained=True)
         num_ftrs = net.classifier[-1].in_features
         net.classifier[-1] = Linear(num_ftrs, 2)
     elif hp['network'] == 'Inception':
