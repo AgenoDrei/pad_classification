@@ -21,19 +21,23 @@ def run(original_image, resolutions, output):
         print(f'Generate diff images and map for {path} with the resolution {cmp_img.shape}')
 
         # cmp_img = cv2.resize(cmp_img, (orig_shape[1], orig_shape[0]))
-        diff_img = (orig_image - cmp_img) # cv2.absdiff(orig_image, cmp_img) # cv2.absdiff(orig_image, cmp_img) # orig_image - cmp_img
+        #diff_img = (orig_image - cmp_img)
+        diff_img = cv2.absdiff(orig_image, cmp_img) # cv2.absdiff(orig_image, cmp_img) # orig_image - cmp_img
         print(f'Min value: {np.amin(diff_img)}, max value: {np.amax(diff_img)}, type: {diff_img.dtype}')
         # norm_coef = 255
         # diff_img /= norm_coef
         # diff_img = (diff_img + 255) // 2
         # diff_img = np.uint8(diff_img)
+        # diff_img += 186
 
         #colormap = cm.RdBu((diff_img) / (diff_img.max() - diff_img.min()) + 0.5)
-        mapper = cm.get_cmap('PuOr')
-        norm = colors.Normalize(vmin=diff_img.min()+50, vmax=np.abs(diff_img.min())-50, clip=True)
-        colormap = mapper(norm(diff_img))
+        mapper = cm.get_cmap('Greys')
+        #norm = colors.Normalize(vmin=diff_img.min()+0, vmax=np.abs(diff_img.min())-0, clip=False)
+        norm = colors.Normalize(vmin=-10, vmax=180, clip=True)
+        colormap = norm(diff_img)
+        colormap = mapper(colormap)
         colormap = np.uint8(colormap * 256)
-
+    
         print(f'Min value: {np.amin(diff_img)}, max value: {np.amax(diff_img)}, type: {diff_img.dtype}')
         print(f'Min value: {np.amin(colormap)}, max value: {np.amax(colormap)}, type: {colormap.dtype}')
         #colormap = cv2.applyColorMap(diff_img, cv2.COLORMAP_HOT)
